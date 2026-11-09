@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CompagnonAI</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <canvas id="scene"></canvas>
+
+    <div id="drop-hint" class="hint">
+      Glisse un fichier <b>.vrm</b> ici<br />
+      <small>ou place-le dans <code>models/default.vrm</code></small>
+      <label class="btn">Choisir un fichier<input id="file" type="file" accept=".vrm" hidden /></label>
+    </div>
+
+    <aside id="panel">
+      <header>
+        <strong id="char-name">…</strong>
+        <span id="emotion" class="pill">neutral</span>
+        <span class="spacer"></span>
+        <button id="tts-toggle" class="icon" title="Voix">🔊</button>
+        <button id="info-toggle" class="icon" title="Infos du modèle">ⓘ</button>
+        <button id="reset" class="icon" title="Effacer la conversation">⟲</button>
+      </header>
+      <div id="vrm-info" hidden></div>
+      <div id="log"></div>
+      <form id="input">
+        <input id="message" autocomplete="off" placeholder="Écris-lui quelque chose…" />
+        <button class="btn" type="submit">Envoyer</button>
+      </form>
+    </aside>
+
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>
