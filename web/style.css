@@ -57,6 +57,12 @@ body.site-mode.avatar-hidden #scene { visibility: hidden; }
 .wardrobe-head { color: var(--muted); margin-bottom: 6px; }
 #wardrobe label { display: flex; gap: 8px; align-items: center; padding: 2px 0; cursor: pointer; }
 #wardrobe input { accent-color: var(--accent); }
+#arousal { display: flex; gap: 10px; align-items: center; padding: 8px 14px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line); }
+#arousal[hidden] { display: none; }
+#arousal .bar { flex: 1; height: 6px; border-radius: 3px; background: #ffffff14; overflow: hidden; }
+#arousal-fill { height: 100%; width: 0; background: linear-gradient(90deg, #b05ad6, var(--accent), #ff3d5a); transition: width 0.8s; }
+#arousal.climax #arousal-fill { animation: pulse 0.4s ease-in-out infinite alternate; }
+@keyframes pulse { to { filter: brightness(1.8); } }
 #vrm-info, .watching { padding: 8px 14px; font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--line); }
 #vrm-info .warn, .watching.forbidden { color: #ffb36b; }
 .watching { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

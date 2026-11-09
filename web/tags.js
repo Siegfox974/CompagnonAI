@@ -1,11 +1,14 @@
 /**
- * Extrait au fil du streaming les balises d'émotion [happy], [sad]... du texte du LLM.
+ * Extrait au fil du streaming les balises du texte du LLM :
+ * émotions [happy], [flirty]... et actions [touch], [stop], [climax].
  * Une balise coupée entre deux fragments est retenue jusqu'au fragment suivant.
  */
 export class TagParser {
-  constructor(emotions, onEmotion) {
-    this.re = new RegExp(`\\[(${emotions.join('|')})\\] ?`, 'gi');
+  constructor(emotions, onEmotion, actions = [], onAction = () => {}) {
+    this.emotions = new Set(emotions);
+    this.re = new RegExp(`\\[(${[...emotions, ...actions].join('|')})\\] ?`, 'gi');
     this.onEmotion = onEmotion;
+    this.onAction = onAction;
     this.pending = '';
   }
 
@@ -32,14 +35,16 @@ export class TagParser {
   }
 
   strip(text) {
-    return text.replace(this.re, (_, emo) => {
-      this.onEmotion(emo.toLowerCase());
+    return text.replace(this.re, (_, tag) => {
+      const name = tag.toLowerCase();
+      if (this.emotions.has(name)) this.onEmotion(name);
+      else this.onAction(name);
       return '';
     });
   }
 }
 
 /** Retire les balises d'un message complet (historique). */
-export function stripTags(text, emotions) {
-  return text.replace(new RegExp(`\\[(${emotions.join('|')})\\]\\s*`, 'gi'), '').trim();
+export function stripTags(text, tags) {
+  return text.replace(new RegExp(`\\[(${tags.join('|')})\\]\\s*`, 'gi'), '').trim();
 }

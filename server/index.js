@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import express from 'express';
 import { config, ROOT } from './config.js';
-import { loadCharacter, listCharacters, buildSystemPrompt, EMOTIONS } from './character.js';
+import { loadCharacter, listCharacters, buildSystemPrompt, EMOTIONS, ACTIONS } from './character.js';
 import { Memory } from './memory.js';
 import { streamChat } from './llm.js';
 import { sanitizeWatching, watchingPrompt } from './watching.js';
@@ -38,10 +38,38 @@ const publicCharacter = () => ({
   age: character.age,
   greeting: character.greeting,
   emotions: EMOTIONS,
+  actions: character.nsfw ? ACTIONS : [],
 });
+
+/** État du corps envoyé par l'interface : se caresse-t-elle, à quel niveau d'excitation, vidéo en lecture ? */
+function readState(body) {
+  const s = body?.state ?? {};
+  return {
+    act: !!s.act,
+    arousal: Math.round(Math.min(Math.max(Number(s.arousal) || 0, 0), 1) * 100),
+    videoPlaying: !!s.videoPlaying,
+  };
+}
+
+function statePrompt(st) {
+  if (!character.nsfw) return '';
+  if (st.act) {
+    return (
+      `En ce moment, tu te caresses en regardant avec lui (excitation : ${st.arousal} %${st.videoPlaying ? '' : ', vidéo en pause'}). ` +
+      `Ton excitation transparaît dans tes réponses : souffle court, mots hachés, gémissements, de plus en plus intenses.`
+    );
+  }
+  if (st.arousal >= 40) return `Tu es excitée (excitation : ${st.arousal} %) et ça se sent dans tes réponses.`;
+  return '';
+}
 
 // ---------- Événements spontanés : ce qui la pousse à parler d'elle-même ----------
 const EVENTS = {
+  start_touch: () =>
+    'il t’invite à te caresser en regardant avec lui, et tu commences. Réagis en une ou deux phrases, en commençant par [touch].',
+  pleasure: () =>
+    'tu te caresses toujours en regardant la vidéo. Exprime ton plaisir en une phrase courte (souffle, gémissement, ce que la vidéo te fait).',
+  climax: () => 'tu viens de jouir. Exprime-le en une ou deux phrases courtes, haletantes, puis savoure.',
   new_page: () =>
     'il vient d’ouvrir cette page. Réagis spontanément, en une ou deux phrases, à ce qu’il regarde.',
   still_watching: () =>
@@ -71,7 +99,8 @@ app.post('/api/character', (req, res) => {
   }
 });
 
-app.get('/api/history', (_req, res) => res.json(memory.recent(100)));
+// Historique brut pour l'affichage (une bulle par message, sans la fusion faite pour le LLM).
+app.get('/api/history', (_req, res) => res.json(memory.messages.slice(-100).map(({ role, content }) => ({ role, content }))));
 
 app.post('/api/reset', (_req, res) => {
   memory.reset();
@@ -90,14 +119,15 @@ app.post('/api/chat', (req, res) => {
   // Le message d'accueil fait partie de la conversation s'il n'y a pas d'historique.
   if (memory.messages.length === 0 && character.greeting) memory.add('assistant', character.greeting);
   memory.add('user', message);
-  generate(req, res, memory.recent());
+  generate(req, res, memory.recent(), { state: readState(req.body) });
 });
 
 /** Elle prend la parole d'elle-même (nouvelle vidéo, silence prolongé...). */
 app.post('/api/react', (req, res) => {
   const event = EVENTS[req.body?.event];
   if (!event) return res.status(400).json({ error: 'Événement inconnu' });
-  if (req.body.event !== 'idle' && !watching) return res.status(409).json({ error: 'Rien à l’écran' });
+  const needsScreen = ['new_page', 'still_watching'].includes(req.body.event);
+  if (needsScreen && !watching) return res.status(409).json({ error: 'Rien à l’écran' });
   // Consigne de mise en scène, non enregistrée dans l'historique : seule sa réponse l'est.
   const cue = {
     role: 'user',
@@ -106,10 +136,10 @@ app.post('/api/react', (req, res) => {
   const messages = memory.recent();
   if (messages.at(-1)?.role === 'user') messages.at(-1).content += `\n\n${cue.content}`;
   else messages.push(cue);
-  generate(req, res, messages, { maxTokens: 160 });
+  generate(req, res, messages, { maxTokens: 160, state: readState(req.body) });
 });
 
-async function generate(req, res, messages, { maxTokens } = {}) {
+async function generate(req, res, messages, { maxTokens, state = readState() } = {}) {
   const abort = new AbortController();
   res.on('close', () => {
     if (!res.writableEnded) abort.abort();
@@ -118,7 +148,7 @@ async function generate(req, res, messages, { maxTokens } = {}) {
   const target = memory;
   let reply = '';
   try {
-    const system = [systemPrompt, watchingPrompt(watching)].filter(Boolean).join('\n\n');
+    const system = [systemPrompt, watchingPrompt(watching), statePrompt(state)].filter(Boolean).join('\n\n');
     const stream = streamChat([{ role: 'system', content: system }, ...messages], {
       signal: abort.signal,
       maxTokens,

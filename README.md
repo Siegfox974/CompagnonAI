@@ -57,6 +57,16 @@ Elle prend la parole d'elle-même :
 
 Il y a toujours au moins 45 s entre deux prises de parole spontanées. Le bouton 💬 les active ou les désactive.
 
+## Moment intime 🔥
+Elle se caresse en regardant avec toi. Les mains sont placées par cinématique inverse : une entre les cuisses avec un va-et-vient, l'autre sur la poitrine. Le bassin ondule, la tête part en arrière, les yeux se ferment à moitié.
+- **Déclenchement** : le bouton 🔥, ou elle-même quand la conversation ou la vidéo l'excite (balises `[touch]`, `[stop]`, `[climax]` du LLM).
+- **Excitation** : une jauge qui monte pendant que la vidéo est en lecture (environ 3 min pour atteindre 100 %) et redescend en pause.
+  Le rythme suit l'excitation et ralentit quand la vidéo est en pause.
+- **Orgasme** à 100 %, ou quand elle le décide : tremblements, tête renversée, yeux fermés, puis relâchement.
+- **Dans la conversation** : son état est transmis au LLM, ses réponses deviennent haletantes, et elle s'exprime d'elle-même environ toutes les 40 s.
+
+Uniquement pour les personnages avec `"nsfw": true`.
+
 ## Personnages
 Le menu en haut du panneau permet de changer de personnage à tout moment. Chacun garde sa propre mémoire.
 - **Luna** (27 ans) : petite amie complice et joueuse.
@@ -70,6 +80,14 @@ Liste les parties du modèle, regroupées par matériau (Tops, Bottoms, Shoes, H
 Le choix est mémorisé par modèle.
 ⚠ Sur la plupart des modèles VRoid, il n'y a pas de peau sous les vêtements : retirer un haut laisse un vide.
 Pour un vrai résultat, il faut un modèle conçu pour (corps complet, vêtements séparés).
+
+### Utiliser un modèle MMD (.pmx)
+Le format PMX n'est pas lu directement : three.js a retiré son lecteur MMD. On le convertit une fois en VRM avec Blender (gratuit) :
+1. Installer **[MMD Tools](https://extensions.blender.org/add-ons/mmd-tools/)** et le **[VRM Add-on for Blender](https://vrm-addon-for-blender.info/)**.
+2. Importer le `.pmx` (File → Import → MikuMikuDance Model).
+3. Définir les os humanoïdes dans l'onglet VRM (assignation automatique proposée), puis exporter en `.vrm`.
+
+Les shaders MMD sont convertis en MToon : le rendu change un peu. Vérifier aussi les conditions d'utilisation du modèle (fichier « readme » fourni avec).
 
 ## Expressions
 12 émotions que le LLM choisit, plusieurs par réponse : neutral, happy, excited, flirty, teasing, aroused, shy, relaxed, surprised, pout, sad, angry.

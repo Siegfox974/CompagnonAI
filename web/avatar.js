@@ -106,6 +106,8 @@ export class Avatar {
     this.blushNames = [];
     this.gesture = null;
     this.attention = 'user';
+    // Moment intime : on (elle se caresse), w (fondu 0→1), arousal (0→1), phase du rythme, orgasme.
+    this.act = { on: false, w: 0, arousal: 0, phase: 0, climaxT: -1, videoPlaying: true };
     this.glanceUntil = 0;
     this.nextGlance = 5;
     this.speaking = false;
@@ -209,6 +211,12 @@ export class Avatar {
     bone('rightUpperArm')?.rotation.set(0, 0, 1.2 * s);
     bone('leftLowerArm')?.rotation.set(0, -0.25 * s, 0);
     bone('rightLowerArm')?.rotation.set(0, 0.25 * s, 0);
+    this.restQ = Object.fromEntries(
+      ['leftUpperArm', 'rightUpperArm', 'leftLowerArm', 'rightLowerArm', 'leftHand', 'rightHand'].map((n) => [
+        n,
+        bone(n)?.quaternion.clone(),
+      ]),
+    );
   }
 
   /** Cadre la caméra : haut du corps (centre) ou plan plus large (coin, par-dessus le site). */
@@ -216,9 +224,10 @@ export class Avatar {
     this.vrm.scene.updateMatrixWorld(true);
     const head = this.vrm.humanoid.getNormalizedBoneNode('head');
     const y = head ? head.getWorldPosition(new THREE.Vector3()).y : 1.4;
-    const corner = this.layout === 'corner';
-    this.controls.target.set(0, corner ? y - 0.35 : y - 0.12, 0);
-    this.camera.position.set(0, corner ? y - 0.3 : y - 0.1, corner ? 2.8 : 1.9);
+    // Plan large en coin (par-dessus le site) ou pendant le moment intime (pour voir les mains).
+    const wide = this.layout === 'corner' || this.act.on;
+    this.controls.target.set(0, wide ? y - 0.38 : y - 0.12, 0);
+    this.camera.position.set(0, wide ? y - 0.32 : y - 0.1, wide ? 2.8 : 1.9);
     this.controls.update();
   }
 
@@ -234,6 +243,28 @@ export class Avatar {
   }
 
   /** Où elle regarde : 'user' (toi / la souris), 'chat' (le panneau quand tu écris), 'screen' (la vidéo). */
+  /** Elle se caresse (true) ou s'arrête (false). */
+  setAct(on) {
+    if (this.act.on === on) return;
+    this.act.on = on;
+    if (this.vrm) this.frame();
+  }
+
+  /** Niveau d'excitation 0..1 : accélère le rythme et intensifie les expressions. */
+  setArousal(v) {
+    this.act.arousal = THREE.MathUtils.clamp(v, 0, 1);
+  }
+
+  /** La vidéo est-elle en lecture ? (en pause, le rythme ralentit) */
+  setVideoPlaying(on) {
+    this.act.videoPlaying = on;
+  }
+
+  /** Orgasme : environ 4 s d'intensité maximale, tremblements, puis relâchement. */
+  climax() {
+    this.act.climaxT = 0;
+  }
+
   setAttention(target) {
     this.attention = target;
   }
@@ -273,8 +304,21 @@ export class Avatar {
   animateBody(t, dt) {
     const vrm = this.vrm;
     const em = vrm.expressionManager;
-    const mood = MOODS[this.mood];
     const damp = (a, b, k = 5) => THREE.MathUtils.damp(a, b, k, dt);
+
+    // Moment intime : fondu, rythme (plus rapide avec l'excitation, ralenti si la vidéo est en pause), orgasme.
+    const act = this.act;
+    act.w = damp(act.w, act.on ? 1 : 0, 2.5);
+    const intensity = act.w * (0.4 + 0.6 * act.arousal);
+    act.phase += dt * Math.PI * 2 * (0.8 + act.arousal * 1.8) * (act.videoPlaying ? 1 : 0.5);
+    let C = 0;
+    if (act.climaxT >= 0) {
+      act.climaxT += dt;
+      C = act.climaxT < 4 ? Math.min(1, act.climaxT * 3) : Math.max(0, 1 - (act.climaxT - 4) / 3);
+      if (act.climaxT > 7) act.climaxT = -1;
+    }
+    const stroke = Math.sin(act.phase);
+    const mood = act.w > 0.5 || C > 0 ? MOODS.aroused : MOODS[this.mood];
     const set = (name, v) => em?.getExpression(name) && em.setValue(name, THREE.MathUtils.clamp(v, 0, 1));
 
     // Expressions : transition douce vers le mélange de l'humeur.
@@ -283,9 +327,9 @@ export class Avatar {
       this.expWeights[e] = damp(this.expWeights[e] ?? 0, goal, 6);
       set(e, this.expWeights[e]);
     }
-    this.mouthBase = damp(this.mouthBase, mood.mouth ?? 0);
-    this.lids = damp(this.lids, mood.lids ?? 0);
-    this.blush = damp(this.blush, mood.blush ?? 0, 2);
+    this.mouthBase = damp(this.mouthBase, Math.max(mood.mouth ?? 0, intensity * (0.15 + 0.15 * Math.abs(stroke)), C * 0.6), 8);
+    this.lids = damp(this.lids, Math.max(mood.lids ?? 0, intensity * 0.45, C * 0.9), 6);
+    this.blush = damp(this.blush, Math.max(mood.blush ?? 0, act.w), 2);
     for (const n of this.blushNames) set(n, this.blush);
 
     // Posture : chaque paramètre glisse vers celui de l'humeur.
@@ -360,19 +404,94 @@ export class Avatar {
     this.breathPhase = (this.breathPhase ?? 0) + dt * 1.6 * p.breath;
     const breath = Math.sin(this.breathPhase);
     const sway = Math.sin(this.swayPhase) * p.sway;
-    bone('hips')?.rotation.set(0, sway * 0.05, f * sway * 0.06);
-    bone('leftUpperLeg')?.rotation.set(0, 0, -f * sway * 0.06);
-    bone('rightUpperLeg')?.rotation.set(0, 0, -f * sway * 0.06);
-    bone('spine')?.rotation.set(f * p.lean * 0.5, Math.sin(t * 0.4) * 0.03, -f * sway * 0.045);
-    bone('chest')?.rotation.set(f * (breath * 0.015 * p.breath + p.lean * 0.5 + g.chest), 0, -f * sway * 0.02);
+    // Bassin qui ondule au rythme, buste et tête qui partent en arrière, tremblements à l'orgasme.
+    const thrust = stroke * 0.07 * intensity;
+    const tremble = Math.sin(t * 45) * 0.015 * C;
+    bone('hips')?.rotation.set(f * thrust, sway * 0.05, f * (sway * 0.06 + tremble));
+    bone('leftUpperLeg')?.rotation.set(-f * thrust, 0, -f * sway * 0.06);
+    bone('rightUpperLeg')?.rotation.set(-f * thrust, 0, -f * sway * 0.06);
+    bone('spine')?.rotation.set(f * (p.lean * 0.5 - 0.04 * intensity), Math.sin(t * 0.4) * 0.03, -f * sway * 0.045);
+    bone('chest')?.rotation.set(
+      f * (breath * 0.015 * p.breath + p.lean * 0.5 + g.chest - 0.05 * intensity - 0.08 * C + tremble),
+      0,
+      -f * sway * 0.02,
+    );
     bone('neck')?.rotation.set(0, this.attYaw * 0.4, f * Math.sin(t * 0.7) * 0.02);
     bone('head')?.rotation.set(
-      f * (0.03 + p.pitch + g.pitch),
+      f * (0.03 + p.pitch + g.pitch - 0.08 * intensity - 0.2 * C),
       p.yaw + g.yaw + this.attYaw * 0.6,
       f * (0.07 + p.tilt + g.roll + Math.sin(t * 0.5) * 0.025),
     );
 
+    if (act.w > 0.001) this.animateHands(stroke, intensity, C);
+    else if (this.handsActive) this.restPose();
+    this.handsActive = act.w > 0.001;
+
     vrm.update(dt);
+  }
+
+  /**
+   * Mains placées par cinématique inverse : main droite entre les cuisses (va-et-vient),
+   * main gauche sur la poitrine (petits cercles). Fondu avec la pose de repos selon act.w.
+   */
+  animateHands(stroke, intensity, C) {
+    const vrm = this.vrm;
+    const bone = (n) => vrm.humanoid.getNormalizedBoneNode(n);
+    const lUpLeg = bone('leftUpperLeg');
+    const rUpLeg = bone('rightUpperLeg');
+    const chest = bone('upperChest') ?? bone('chest');
+    if (!lUpLeg || !rUpLeg || !chest || !this.restQ) return;
+
+    // Le modèle regarde vers +Z ; sa droite est en -X.
+    vrm.scene.updateMatrixWorld(true);
+    const crotch = lUpLeg.getWorldPosition(new THREE.Vector3()).add(rUpLeg.getWorldPosition(new THREE.Vector3())).multiplyScalar(0.5);
+    const scale = crotch.y / 0.85; // proportions du modèle
+    const speed = 1 + C;
+    crotch.add(new THREE.Vector3(0, (-0.06 + stroke * 0.035 * speed) * scale, (0.09 + Math.cos(this.act.phase) * 0.015) * scale));
+    const breast = chest
+      .getWorldPosition(new THREE.Vector3())
+      .add(new THREE.Vector3(0.08 * scale, (-0.03 + Math.sin(this.act.phase * 0.5) * 0.015) * scale, (0.14 + Math.cos(this.act.phase * 0.5) * 0.01) * scale));
+
+    this.solveArm('right', crotch, new THREE.Vector3(-0.5, -0.2, -0.3));
+    this.solveArm('left', breast, new THREE.Vector3(0.5, -0.4, -0.2));
+  }
+
+  /** IK analytique à deux os (bras + avant-bras), pôle = direction vers laquelle pointe le coude. */
+  solveArm(side, target, poleOffset) {
+    const bone = (n) => this.vrm.humanoid.getNormalizedBoneNode(n);
+    const up = bone(`${side}UpperArm`);
+    const lo = bone(`${side}LowerArm`);
+    const hand = bone(`${side}Hand`);
+    if (!up || !lo || !hand) return;
+    const w = this.act.w;
+    const restUp = this.restQ[`${side}UpperArm`];
+    const restLo = this.restQ[`${side}LowerArm`];
+
+    up.quaternion.copy(restUp);
+    lo.quaternion.copy(restLo);
+    up.updateMatrixWorld(true);
+    const S = up.getWorldPosition(new THREE.Vector3());
+    const E = lo.getWorldPosition(new THREE.Vector3());
+    const W = hand.getWorldPosition(new THREE.Vector3());
+    const a = S.distanceTo(E);
+    const b = E.distanceTo(W);
+    const toT = target.clone().sub(S);
+    const d = THREE.MathUtils.clamp(toT.length(), Math.abs(a - b) + 1e-3, a + b - 1e-3);
+    const dir = toT.normalize();
+    const cosA = THREE.MathUtils.clamp((a * a + d * d - b * b) / (2 * a * d), -1, 1);
+    const pole = S.clone().add(poleOffset).sub(S);
+    pole.sub(dir.clone().multiplyScalar(pole.dot(dir))).normalize();
+    const elbow = S.clone()
+      .add(dir.clone().multiplyScalar(a * cosA))
+      .add(pole.multiplyScalar(a * Math.sqrt(1 - cosA * cosA)));
+
+    rotateBoneToward(up, E, elbow, S);
+    up.updateMatrixWorld(true);
+    rotateBoneToward(lo, hand.getWorldPosition(new THREE.Vector3()), target, lo.getWorldPosition(new THREE.Vector3()));
+
+    // Fondu avec la pose de repos.
+    up.quaternion.copy(restUp.clone().slerp(up.quaternion, w));
+    lo.quaternion.copy(restLo.clone().slerp(lo.quaternion, w));
   }
 
   animateAmbiance(t, dt) {
@@ -427,6 +546,17 @@ function makeParticles(count = 140) {
   const points = new THREE.Points(geometry, material);
   points.frustumCulled = false;
   return points;
+}
+
+/** Tourne un os pour que le point `from` (porté par l'os, autour de `pivot`) vise `to`. */
+function rotateBoneToward(bone, from, to, pivot) {
+  const q = new THREE.Quaternion().setFromUnitVectors(
+    from.clone().sub(pivot).normalize(),
+    to.clone().sub(pivot).normalize(),
+  );
+  const parentQ = bone.parent.getWorldQuaternion(new THREE.Quaternion());
+  const worldQ = bone.getWorldQuaternion(new THREE.Quaternion());
+  bone.quaternion.copy(parentQ.invert().multiply(q.multiply(worldQ)));
 }
 
 /** Nom lisible d'un matériau VRoid / Unity : retire « (Instance) », « (Outline) », préfixes N00_000_... */

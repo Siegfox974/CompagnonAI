@@ -45,6 +45,11 @@
 - 12 humeurs (expressions, posture, gestes), rougissement, regard dirigé (toi, le chat ou la vidéo).
 - Personnages multiples changeables à chaud (choix mémorisé dans `data/settings.json`), garde-robe par matériau.
 
+### Fait : moment intime
+- `Avatar.setAct / setArousal / climax` : IK analytique à deux os sur les bras normalisés, fondu avec la pose de repos, bassin, buste, tête et expressions pilotés par le rythme.
+- L'excitation est calculée côté interface (lecture vidéo détectée dans le `<webview>` toutes les 2 s) et envoyée au serveur (`state`), qui l'injecte dans le prompt.
+- Balises d'action `[touch] [stop] [climax]`, événements spontanés `start_touch`, `pleasure` et `climax`.
+
 ### Pistes suivantes
 - Le personnage pilote sa tenue (balise `[outfit:…]`), avec des tenues préparées par modèle.
 - Animations `.vrma` (danse, poses, gestes des mains).

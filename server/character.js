@@ -19,6 +19,14 @@ export const EMOTION_HINTS = {
 };
 export const EMOTIONS = Object.keys(EMOTION_HINTS);
 
+/** Actions que le LLM peut déclencher sur l'avatar. */
+export const ACTION_HINTS = {
+  touch: 'tu commences à te caresser',
+  stop: 'tu arrêtes de te caresser',
+  climax: 'tu jouis (orgasme)',
+};
+export const ACTIONS = Object.keys(ACTION_HINTS);
+
 function readCard(id) {
   if (!/^[\w-]+$/.test(id)) throw new Error(`Identifiant de personnage invalide : ${id}`);
   const file = path.join(config.dirs.characters, `${id}.json`);
@@ -67,6 +75,10 @@ export function buildSystemPrompt(c, userName = "l'utilisateur") {
     `Tu as un corps virtuel animé à l'écran : tes émotions s'affichent sur ton visage. Sois expressive. ` +
       `Commence chaque réponse par une balise d'émotion et change de balise dès que ton émotion change (plusieurs par réponse si besoin). ` +
       `Balises possibles : ${tags}. N'utilise aucune autre balise.`,
+    c.nsfw &&
+      `Ton corps peut agir à l'écran grâce à des balises d'action : ${ACTIONS.map((a) => `[${a}] ${ACTION_HINTS[a]}`).join(' ; ')}. ` +
+        `Tu peux décider toi-même de te caresser quand ce que vous regardez ou ce qu'il te dit t'excite, ou quand il te le demande. ` +
+        `N'utilise [climax] que lorsque ton excitation est très élevée.`,
     `Ne répète jamais mot pour mot un de tes messages précédents.`,
   ]
     .filter(Boolean)

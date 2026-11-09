@@ -12,7 +12,7 @@ const watchingEl = $('#watching');
 
 const isApp = navigator.userAgent.includes('Electron');
 const avatar = createAvatar();
-let character = { name: '…', emotions: ['neutral'] };
+let character = { name: '…', emotions: ['neutral'], actions: [] };
 let busy = false;
 
 /** Sans WebGL (pilote graphique absent ou bloqué), le chat doit continuer de fonctionner. */
@@ -31,6 +31,10 @@ function createAvatar() {
       setAmbiance: noop,
       setLayout: noop,
       setAttention: noop,
+      setAct: noop,
+      setArousal: noop,
+      setVideoPlaying: noop,
+      climax: noop,
       getParts: () => [],
       setPartVisible: noop,
       load: async () => {
@@ -354,7 +358,7 @@ async function streamReply(url, body) {
   form.querySelector('button').disabled = true;
   const bubble = addMessage('assistant');
   bubble.classList.add('typing');
-  const parser = new TagParser(character.emotions, setEmotion);
+  const parser = new TagParser(character.emotions, setEmotion, character.actions, (a) => intimacy.onAction(a));
 
   const append = (text) => {
     if (!text) return;
@@ -367,7 +371,7 @@ async function streamReply(url, body) {
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, state: intimacy.state() }),
     });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -424,6 +428,8 @@ const reactions = {
   },
   tick() {
     const silent = Date.now() - this.lastActivity;
+    // Pendant qu'elle se caresse, elle s'exprime plus souvent.
+    if (intimacy.on && silent > 40_000) return this.fire('pleasure');
     const watchingSomething = !!lastPageUrl && document.body.classList.contains('site-mode');
     if (watchingSomething && silent > 3 * 60_000) this.fire('still_watching');
     else if (!watchingSomething && silent > 6 * 60_000) this.fire('idle');
@@ -436,6 +442,101 @@ reactBtn.addEventListener('click', () => {
   reactions.enabled = !reactions.enabled;
   save('reactions', reactions.enabled);
   reactBtn.classList.toggle('on', reactions.enabled);
+});
+
+/**
+ * Moment intime : elle se caresse en regardant avec toi. L'excitation monte pendant que la vidéo
+ * tourne (plus lentement en pause) ; à 100 % elle jouit, puis redescend.
+ * Déclenché par le bouton 🔥 ou par elle-même via les balises [touch] / [stop] / [climax].
+ */
+const intimacy = {
+  on: false,
+  arousal: 0,
+  videoPlaying: false,
+  climaxUntil: 0,
+  el: $('#arousal'),
+  state() {
+    return { act: this.on, arousal: this.arousal, videoPlaying: this.videoPlaying };
+  },
+  render() {
+    $('#act-toggle').classList.toggle('on', this.on);
+    this.el.hidden = !this.on && this.arousal < 0.05;
+    this.el.classList.toggle('climax', Date.now() < this.climaxUntil);
+    $('#arousal-fill').style.width = `${Math.round(this.arousal * 100)}%`;
+    avatar.setArousal(this.arousal);
+  },
+  start() {
+    if (this.on) return;
+    this.on = true;
+    avatar.setAct(true);
+    this.render();
+  },
+  stop(reset = false) {
+    this.on = false;
+    avatar.setAct(false);
+    if (reset) this.arousal = 0;
+    this.render();
+  },
+  climax(fromModel = false) {
+    if (Date.now() < this.climaxUntil) return;
+    this.climaxUntil = Date.now() + 7000;
+    avatar.climax();
+    setEmotion('aroused');
+    this.render();
+    setTimeout(() => {
+      this.arousal = 0.25;
+      this.stop();
+      setEmotion('relaxed');
+    }, 7000);
+    // Si l'orgasme vient de la jauge (et non d'une balise du LLM), elle l'exprime.
+    if (!fromModel) {
+      reactions.lastReaction = 0;
+      setTimeout(() => reactions.fire('climax'), 600);
+    }
+  },
+  onAction(a) {
+    if (a === 'touch') this.start();
+    else if (a === 'stop') this.stop();
+    else if (a === 'climax') {
+      this.arousal = 1;
+      this.start();
+      this.climax(true);
+    }
+  },
+  /** Toutes les 2 s : lecture vidéo en cours ? montée de l'excitation. */
+  async tick() {
+    if (site.view && document.body.classList.contains('site-mode')) {
+      try {
+        this.videoPlaying = await site.view.executeJavaScript(
+          `[...document.querySelectorAll('video')].some((v) => !v.paused && !v.ended && v.readyState > 2)`,
+        );
+      } catch {
+        this.videoPlaying = false;
+      }
+    } else {
+      this.videoPlaying = false;
+    }
+    avatar.setVideoPlaying(this.videoPlaying);
+    if (this.on && Date.now() > this.climaxUntil) {
+      // ~3 min de vidéo pour atteindre 100 % ; en pause, elle redescend doucement.
+      this.arousal = Math.min(1, Math.max(0, this.arousal + (this.videoPlaying ? 2 / 180 : -2 / 600)));
+      if (this.arousal >= 1) this.climax();
+    } else if (!this.on && Date.now() > this.climaxUntil) {
+      this.arousal = Math.max(0, this.arousal - 2 / 300);
+    }
+    this.render();
+  },
+};
+setInterval(() => intimacy.tick(), 2000);
+$('#act-toggle').addEventListener('click', () => {
+  if (intimacy.on) {
+    intimacy.stop();
+    return;
+  }
+  intimacy.start();
+  // Elle réagit à l'invitation (si elle n'est pas déjà en train de parler).
+  reactions.lastReaction = 0;
+  reactions.fire('start_touch');
 });
 
 // Quand tu écris, elle regarde le chat ; sinon toi, ou la vidéo par moments.
@@ -467,7 +568,7 @@ function greet() {
   if (!character.greeting) return;
   const emo = character.greeting.match(/\[(\w+)\]/)?.[1];
   if (emo) setEmotion(emo);
-  addMessage('assistant', stripTags(character.greeting, character.emotions));
+  addMessage('assistant', stripTags(character.greeting, [...character.emotions, ...character.actions]));
 }
 
 // ---------- Personnages ----------
@@ -480,7 +581,9 @@ async function showCharacter(c) {
   setEmotion('neutral');
   const history = await (await fetch('/api/history')).json();
   if (history.length === 0) greet();
-  for (const m of history) addMessage(m.role, stripTags(m.content, c.emotions));
+  for (const m of history) addMessage(m.role, stripTags(m.content, [...c.emotions, ...c.actions]));
+  intimacy.stop(true);
+  $('#act-toggle').hidden = c.actions.length === 0;
   const lastEmo = [...history].reverse().find((m) => m.role === 'assistant')?.content.match(/\[(\w+)\][^[]*$/)?.[1];
   if (lastEmo) setEmotion(lastEmo);
 }
