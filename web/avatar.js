@@ -87,10 +87,13 @@ export class Avatar {
   /** Bras le long du corps au lieu de la T-pose. */
   restPose() {
     const bone = (n) => this.vrm.humanoid.getNormalizedBoneNode(n);
-    bone('leftUpperArm')?.rotation.set(0, 0, -1.25);
-    bone('rightUpperArm')?.rotation.set(0, 0, 1.25);
-    bone('leftLowerArm')?.rotation.set(0, -0.2, 0);
-    bone('rightLowerArm')?.rotation.set(0, 0.2, 0);
+    // En VRM 0.x le squelette regarde vers -Z (retourné ensuite par rotateVRM0) :
+    // le sens des rotations est donc inversé par rapport au VRM 1.0.
+    const s = this.vrm.meta?.metaVersion === '0' ? -1 : 1;
+    bone('leftUpperArm')?.rotation.set(0, 0, -1.25 * s);
+    bone('rightUpperArm')?.rotation.set(0, 0, 1.25 * s);
+    bone('leftLowerArm')?.rotation.set(0, -0.2 * s, 0);
+    bone('rightLowerArm')?.rotation.set(0, 0.2 * s, 0);
   }
 
   /** Cadre la caméra sur le haut du corps. */
