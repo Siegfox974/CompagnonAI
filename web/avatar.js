@@ -165,12 +165,30 @@ export class Avatar {
     this.ambianceName = name;
     const k = this.brightness ?? 1;
     const { hemi, key, rimA, rimB } = this.lights;
-    hemi.color.set(a.hemi[0]);
-    hemi.groundColor.set(a.hemi[1]);
-    hemi.intensity = a.hemi[2] * k;
-    for (const [light, [color, intensity]] of [[key, a.key], [rimA, a.rimA], [rimB, a.rimB]]) {
-      light.color.set(color);
-      light.intensity = light.baseIntensity = intensity * k;
+    if (this.vrm?.isPMX) {
+      // Matériaux toon MMD : lumière ambiante uniforme + une directionnelle (pas de dégradé ciel/sol),
+      // légèrement teintées par l'ambiance ; contre-jours discrets.
+      // Calibré pour qu'une peau éclairée de face restitue la couleur de sa texture (luminosité 1).
+      const tint = (c, amount) => new THREE.Color(0xffffff).lerp(new THREE.Color(c), amount);
+      hemi.color.copy(tint(a.hemi[0], 0.15));
+      hemi.groundColor.copy(hemi.color);
+      hemi.intensity = 1.25 * k;
+      key.color.copy(tint(a.key[0], 0.25));
+      key.intensity = key.baseIntensity = 1.9 * k;
+      key.position.set(-1, 1, 1);
+      for (const [light, [color, intensity]] of [[rimA, a.rimA], [rimB, a.rimB]]) {
+        light.color.set(color);
+        light.intensity = light.baseIntensity = intensity * 0.2 * k;
+      }
+    } else {
+      hemi.color.set(a.hemi[0]);
+      hemi.groundColor.set(a.hemi[1]);
+      hemi.intensity = a.hemi[2] * k;
+      key.position.set(1, 2, 2);
+      for (const [light, [color, intensity]] of [[key, a.key], [rimA, a.rimA], [rimB, a.rimB]]) {
+        light.color.set(color);
+        light.intensity = light.baseIntensity = intensity * k;
+      }
     }
     this.particles.visible = !!a.particles;
     if (a.particles) {
@@ -212,6 +230,7 @@ export class Avatar {
     // VRM 0.x : squelette retourné, les rotations autour de X et Z sont inversées.
     this.flip = vrm.meta?.metaVersion === '0' ? -1 : 1;
     this.armRest = measureArmRest(vrm);
+    if (this.ambianceName) this.setAmbiance(this.ambianceName); // éclairage adapté au type de modèle
     this.blushNames = (vrm.expressionManager?.expressions ?? [])
       .map((e) => e.expressionName)
       .filter((n) => BLUSH_RE.test(n));

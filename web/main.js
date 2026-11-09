@@ -107,8 +107,9 @@ async function loadVrm(url) {
     for (const name of load(modelKey, [])) avatar.setPartVisible(name, false);
     for (const [name, v] of Object.entries(load(`morphs:${modelKey}`, {}))) avatar.setMorph(name, v);
     // Luminosité mémorisée par type de modèle (les matériaux MMD sont plus sensibles à la lumière).
-    brightnessKey = /\.pmx$/i.test(url.split('?')[0]) ? 'brightness:pmx' : 'brightness:vrm';
-    const k = load(brightnessKey, brightnessKey === 'brightness:pmx' ? 0.6 : 1);
+    // (clé « pmx2 » : l'éclairage MMD a été recalibré, l'ancien réglage à 0,6 ne s'applique plus)
+    brightnessKey = /\.pmx$/i.test(url.split('?')[0]) ? 'brightness:pmx2' : 'brightness:vrm';
+    const k = load(brightnessKey, 1);
     $('#brightness').value = k;
     avatar.setBrightness(k);
     renderWardrobe();
