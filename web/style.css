@@ -73,8 +73,9 @@ body.site-mode.avatar-hidden #scene { visibility: hidden; }
 #arousal.climax #arousal-fill { animation: pulse 0.4s ease-in-out infinite alternate; }
 @keyframes pulse { to { filter: brightness(1.8); } }
 #vrm-info, .watching { padding: 8px 14px; font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--line); }
+.model-pick[hidden] { display: none; }
 .model-pick { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
-#brightness, .morph-row input { flex: 1; accent-color: var(--accent); }
+#brightness, #sphere, .morph-row input { flex: 1; accent-color: var(--accent); }
 #morphs-box { margin-top: 10px; }
 .morph-row { display: flex; gap: 8px; align-items: center; padding: 2px 0; }
 .morph-row span { flex: 0 0 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

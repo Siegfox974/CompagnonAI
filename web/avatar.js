@@ -357,6 +357,10 @@ export class Avatar {
     this.forcedExpr = { name, until: performance.now() + ms };
   }
 
+  setSphereStrength(s) {
+    this.vrm?.setSphereStrength?.(s);
+  }
+
   /** Morphs de réglage du modèle (tenues, formes) : uniquement pour les modèles MMD. */
   getMorphs() {
     const rig = this.vrm;

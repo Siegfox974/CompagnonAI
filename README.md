@@ -112,7 +112,7 @@ Points à connaître :
   On y trouve les tenues (« 衬衣消 » = masquer la chemise, « ネグリジェ消し » = masquer la nuisette), les formes et les variantes.
   Quand un modèle superpose plusieurs tenues, c'est là qu'on choisit celle qui est portée.
 - Les morphs de matériau (masquer un vêtement, rougissement) sont appliqués par l'app : la bibliothèque les lit mais ne les applique pas.
-- **Éclairage** : les modèles MMD utilisent l'éclairage de référence de MMD (lumière ambiante + une directionnelle), légèrement teinté par l'ambiance. La **luminosité** (dans ⓘ) est réglable et mémorisée.
+- **Éclairage** : les modèles MMD utilisent l'éclairage de référence de MMD (lumière ambiante + une directionnelle), légèrement teinté par l'ambiance. La **luminosité** et les **reflets** (dans ⓘ) sont réglables et mémorisés. Les reflets dosent les sphere maps en addition (peau huilée, cheveux) : 0,5 par défaut, car la bibliothèque les applique beaucoup plus fort que MMD.
 - Une texture introuvable est signalée dans le chat. La partie concernée garde sa couleur unie au lieu de disparaître.
 - Le format PMX ne contient pas de permissions : elles sont dans le **readme** du modèle.
 

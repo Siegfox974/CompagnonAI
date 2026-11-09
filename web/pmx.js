@@ -205,6 +205,17 @@ class PmxRig {
     });
   }
 
+  /**
+   * Intensité des sphere maps en mode addition (reflets huilés, cheveux, yeux).
+   * La bibliothèque multiplie le reflet par toute la couleur éclairée avant de l'ajouter : sur une peau
+   * claire, ça double presque la luminosité (peau blanche). MMD l'ajoute sur une base plus sombre.
+   */
+  setSphereStrength(s) {
+    for (const m of this.materials) {
+      if (m.sphereBlendMode === 'add' && m.sphereTextureMultiplicativeColor) m.sphereTextureMultiplicativeColor.set(s, s, s, 1);
+    }
+  }
+
   /** Règle un morph de réglage (0..1) ; 0 retire le réglage. */
   setMorph(name, value) {
     const i = this.dict[name];

@@ -46,6 +46,7 @@ function createAvatar() {
       setMorph: noop,
       setBrightness: noop,
       expressionReport: () => [],
+      setSphereStrength: noop,
       previewExpression: noop,
       load: async () => {
         throw new Error('WebGL indisponible');
@@ -115,6 +116,12 @@ async function loadVrm(url) {
     const k = load(brightnessKey, brightnessKey === 'brightness:pmx3' ? 0.85 : 1);
     $('#brightness').value = k;
     avatar.setBrightness(k);
+    // Reflets des sphere maps en addition (modèles MMD) : 0,5 par défaut.
+    const isPmx = brightnessKey !== 'brightness:vrm';
+    $('#sphere-row').hidden = !isPmx;
+    const sp = load('sphere:pmx', 0.5);
+    $('#sphere').value = sp;
+    if (isPmx) avatar.setSphereStrength(sp);
     renderWardrobe();
     renderExprDiag();
   } catch (err) {
@@ -335,6 +342,11 @@ $('#expr-test').addEventListener('click', async () => {
 });
 
 let brightnessKey = 'brightness:vrm';
+$('#sphere').addEventListener('input', (e) => {
+  const v = Number(e.target.value);
+  avatar.setSphereStrength(v);
+  save('sphere:pmx', v);
+});
 $('#brightness').addEventListener('input', (e) => {
   const k = Number(e.target.value);
   avatar.setBrightness(k);
