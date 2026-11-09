@@ -6,6 +6,7 @@ import { loadCharacter, listCharacters, buildSystemPrompt, EMOTIONS, ACTIONS } f
 import { Memory } from './memory.js';
 import { streamChat } from './llm.js';
 import { sanitizeWatching, watchingPrompt } from './watching.js';
+import { repetitionPrompt } from './style.js';
 
 // ---------- Personnage courant (changeable à chaud, choix mémorisé) ----------
 const settingsFile = path.join(config.dirs.data, 'settings.json');
@@ -66,16 +67,15 @@ function statePrompt(st) {
 // ---------- Événements spontanés : ce qui la pousse à parler d'elle-même ----------
 const EVENTS = {
   start_touch: () =>
-    'il t’invite à te caresser en regardant avec lui, et tu commences. Réagis en une ou deux phrases, en commençant par [touch].',
+    'il t’invite à te caresser en regardant avec lui, et tu commences. Réagis en une phrase courte, en commençant par [touch].',
   pleasure: () =>
-    'tu te caresses toujours en regardant la vidéo. Exprime ton plaisir en une phrase courte (souffle, gémissement, ce que la vidéo te fait).',
-  climax: () => 'tu viens de jouir. Exprime-le en une ou deux phrases courtes, haletantes, puis savoure.',
+    'tu te caresses toujours en regardant. Une phrase très courte (parfois juste un souffle ou quelques mots) sur une sensation précise ou un détail de ce qui se passe à l’écran.',
+  climax: () => 'tu viens de jouir. Quelques mots haletants, puis savoure.',
   new_page: () =>
-    'il vient d’ouvrir cette page. Réagis spontanément, en une ou deux phrases, à ce qu’il regarde.',
+    'il vient d’ouvrir cette page. Réagis à un détail précis (un tag, une pratique, une personne), en une phrase courte, sans dire que la vidéo est « intéressante » et sans poser de question.',
   still_watching: () =>
-    'il regarde toujours sans rien te dire depuis un moment. Relance-le, commente ou provoque-le en une ou deux phrases.',
-  idle: () =>
-    'il ne t’a rien dit depuis un moment. Relance la conversation en une ou deux phrases, selon ta personnalité.',
+    'il regarde sans rien te dire depuis un moment. Une phrase courte : un commentaire, une provocation ou une envie, sans lui demander si ça lui plaît.',
+  idle: () => 'il ne t’a rien dit depuis un moment. Relance-le en une phrase courte, selon ta personnalité, sans question banale.',
 };
 
 // ---------- API ----------
@@ -185,7 +185,9 @@ async function generate(req, res, messages, { maxTokens, state = readState() } =
   const target = memory;
   let reply = '';
   try {
-    const system = [systemPrompt, watchingPrompt(watching), statePrompt(state)].filter(Boolean).join('\n\n');
+    const system = [systemPrompt, watchingPrompt(watching), statePrompt(state), repetitionPrompt(memory.messages)]
+      .filter(Boolean)
+      .join('\n\n');
     const stream = streamChat([{ role: 'system', content: system }, ...messages], {
       signal: abort.signal,
       maxTokens,

@@ -17,6 +17,8 @@ try {
 
 // Cookies, cache vidéo, etc. restent dans le dossier du projet (pas sur C:).
 app.setPath('userData', path.join(ROOT, 'data', 'electron'));
+// Le cache HTTP (morceaux de vidéos des sites) est plafonné à 300 Mo, puis vidé à chaque fermeture.
+app.commandLine.appendSwitch('disk-cache-size', String(300 * 1024 * 1024));
 
 app.on('web-contents-created', (_e, contents) => {
   // Sécurité du <webview> : pas de preload, pas de Node, isolation stricte.
@@ -70,3 +72,16 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => app.quit());
+
+// Vide le cache du site en fond avant de quitter (les cookies et la session sont conservés).
+let cacheCleared = false;
+app.on('before-quit', (event) => {
+  if (cacheCleared) return;
+  event.preventDefault();
+  cacheCleared = true;
+  const done = () => app.quit();
+  Promise.race([
+    Promise.all([session.fromPartition('persist:site').clearCache(), session.defaultSession.clearCache()]),
+    new Promise((r) => setTimeout(r, 3000)),
+  ]).then(done, done);
+});

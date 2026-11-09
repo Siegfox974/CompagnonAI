@@ -147,6 +147,17 @@ setx OLLAMA_KV_CACHE_TYPE q8_0
 Redémarrer ensuite Ollama. Sans `OLLAMA_CONTEXT_LENGTH`, Ollama peut couper la conversation : le prompt du personnage
 et l'historique dépassent la taille par défaut. Elle « oublie » alors ses consignes et répond plus lentement.
 
+## Réponses plus naturelles
+- **Anti-répétition automatique** : à chaque réponse, le serveur repère dans ses derniers messages les débuts de phrase, les formules
+  qui reviennent et les questions finales systématiques, puis les lui interdit dans la consigne.
+- **Pénalités de répétition** envoyées au modèle (`LLM_FREQUENCY_PENALTY`, `LLM_PRESENCE_PENALTY` dans `.env`).
+- **Exemples de dialogue** (`examples` dans chaque fiche de `characters/`) : ils montrent le ton et la longueur attendus.
+  C'est le réglage le plus efficace pour donner une personnalité. Modifie-les à ton goût.
+
+## Espace disque
+- `espace-disque.bat` affiche ce qu'occupent le projet et ses outils : cache, modèles, Ollama, cache npm, fichiers temporaires.
+- Le cache du navigateur intégré (morceaux de vidéos) est plafonné à 300 Mo et vidé à chaque fermeture de l'application.
+
 ## Réponses lentes ?
 
 La vitesse dépend du LLM et de la carte graphique. `ollama ps` doit afficher **100% GPU**. Sinon :
@@ -164,6 +175,7 @@ git clone -b claude/practical-hamilton-vv7br4 https://github.com/siegfox974/Comp
 ```
 
 - **Lancer** : double-clic sur `lancer.bat` (application desktop). `lancer-navigateur.bat` ouvre la version navigateur.
+- **Espace disque** : `espace-disque.bat` indique ce qui prend de la place.
 - **Mettre à jour** : double-clic sur `mettre-a-jour.bat`. Seuls les fichiers modifiés sont téléchargés. Les modèles Ollama, `.env`, `models/` et `data/` ne sont pas touchés.
 
 Pour stocker les modèles Ollama hors du SSD : `setx OLLAMA_MODELS "D:\Ollama\models"`, puis redémarrer Ollama.

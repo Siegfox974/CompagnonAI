@@ -6,7 +6,7 @@ import { config } from './config.js';
  * Renvoie un itérateur asynchrone de fragments de texte.
  */
 export async function* streamChat(messages, { signal, maxTokens = config.llm.maxTokens } = {}) {
-  const { baseUrl, model, apiKey, temperature } = config.llm;
+  const { baseUrl, model, apiKey, temperature, topP, frequencyPenalty, presencePenalty } = config.llm;
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     signal,
@@ -14,7 +14,16 @@ export async function* streamChat(messages, { signal, maxTokens = config.llm.max
       'Content-Type': 'application/json',
       ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
     },
-    body: JSON.stringify({ model, messages, stream: true, temperature, max_tokens: maxTokens }),
+    body: JSON.stringify({
+      model,
+      messages,
+      stream: true,
+      temperature,
+      top_p: topP,
+      frequency_penalty: frequencyPenalty,
+      presence_penalty: presencePenalty,
+      max_tokens: maxTokens,
+    }),
   });
   if (!res.ok) {
     throw new Error(`LLM ${res.status} : ${(await res.text()).slice(0, 300)}`);
