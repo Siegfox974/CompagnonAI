@@ -2,23 +2,73 @@ import fs from 'node:fs';
 import path from 'node:path';
 import express from 'express';
 import { config, ROOT } from './config.js';
-import { loadCharacter, buildSystemPrompt, EMOTIONS } from './character.js';
+import { loadCharacter, listCharacters, buildSystemPrompt, EMOTIONS } from './character.js';
 import { Memory } from './memory.js';
 import { streamChat } from './llm.js';
 import { sanitizeWatching, watchingPrompt } from './watching.js';
 
-const character = loadCharacter();
-const memory = new Memory(character.id);
-const systemPrompt = buildSystemPrompt(character);
+// ---------- Personnage courant (changeable à chaud, choix mémorisé) ----------
+const settingsFile = path.join(config.dirs.data, 'settings.json');
+const settings = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+  } catch {
+    return {};
+  }
+})();
+
+let character, memory, systemPrompt;
+function useCharacter(id) {
+  character = loadCharacter(id);
+  memory = new Memory(character.id);
+  systemPrompt = buildSystemPrompt(character);
+}
+try {
+  useCharacter(settings.character || config.character);
+} catch (err) {
+  console.warn(`[personnage] ${err.message} : retour au personnage par défaut.`);
+  useCharacter(config.character);
+}
+
 let watching = null;
 
+const publicCharacter = () => ({
+  id: character.id,
+  name: character.name,
+  age: character.age,
+  greeting: character.greeting,
+  emotions: EMOTIONS,
+});
+
+// ---------- Événements spontanés : ce qui la pousse à parler d'elle-même ----------
+const EVENTS = {
+  new_page: () =>
+    'il vient d’ouvrir cette page. Réagis spontanément, en une ou deux phrases, à ce qu’il regarde.',
+  still_watching: () =>
+    'il regarde toujours sans rien te dire depuis un moment. Relance-le, commente ou provoque-le en une ou deux phrases.',
+  idle: () =>
+    'il ne t’a rien dit depuis un moment. Relance la conversation en une ou deux phrases, selon ta personnalité.',
+};
+
+// ---------- API ----------
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 app.use('/models', express.static(config.dirs.models), (_req, res) => res.sendStatus(404));
 
-app.get('/api/character', (_req, res) => {
-  const { name, age, greeting } = character;
-  res.json({ name, age, greeting, emotions: EMOTIONS });
+app.get('/api/character', (_req, res) => res.json(publicCharacter()));
+
+app.get('/api/characters', (_req, res) => res.json({ current: character.id, list: listCharacters() }));
+
+app.post('/api/character', (req, res) => {
+  try {
+    useCharacter(String(req.body?.id ?? ''));
+    settings.character = character.id;
+    fs.mkdirSync(config.dirs.data, { recursive: true });
+    fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
+    res.json(publicCharacter());
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 app.get('/api/history', (_req, res) => res.json(memory.recent(100)));
@@ -34,24 +84,44 @@ app.post('/api/context', (req, res) => {
   res.json({ ok: true, forbidden: !!watching?.forbidden });
 });
 
-app.post('/api/chat', async (req, res) => {
+app.post('/api/chat', (req, res) => {
   const message = String(req.body?.message ?? '').trim();
   if (!message) return res.status(400).json({ error: 'Message vide' });
-
   // Le message d'accueil fait partie de la conversation s'il n'y a pas d'historique.
   if (memory.messages.length === 0 && character.greeting) memory.add('assistant', character.greeting);
   memory.add('user', message);
+  generate(req, res, memory.recent());
+});
 
+/** Elle prend la parole d'elle-même (nouvelle vidéo, silence prolongé...). */
+app.post('/api/react', (req, res) => {
+  const event = EVENTS[req.body?.event];
+  if (!event) return res.status(400).json({ error: 'Événement inconnu' });
+  if (req.body.event !== 'idle' && !watching) return res.status(409).json({ error: 'Rien à l’écran' });
+  // Consigne de mise en scène, non enregistrée dans l'historique : seule sa réponse l'est.
+  const cue = {
+    role: 'user',
+    content: `(Mise en scène, ce n'est pas un message de lui : ${event()} Ne mentionne pas cette consigne.)`,
+  };
+  const messages = memory.recent();
+  if (messages.at(-1)?.role === 'user') messages.at(-1).content += `\n\n${cue.content}`;
+  else messages.push(cue);
+  generate(req, res, messages, { maxTokens: 160 });
+});
+
+async function generate(req, res, messages, { maxTokens } = {}) {
   const abort = new AbortController();
   res.on('close', () => {
     if (!res.writableEnded) abort.abort();
   });
 
+  const target = memory;
   let reply = '';
   try {
     const system = [systemPrompt, watchingPrompt(watching)].filter(Boolean).join('\n\n');
-    const stream = streamChat([{ role: 'system', content: system }, ...memory.recent()], {
+    const stream = streamChat([{ role: 'system', content: system }, ...messages], {
       signal: abort.signal,
+      maxTokens,
     });
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache');
@@ -62,7 +132,7 @@ app.post('/api/chat', async (req, res) => {
     res.end();
   } catch (err) {
     if (abort.signal.aborted) return;
-    console.error('[chat]', err.message);
+    console.error('[llm]', err.message);
     if (!res.headersSent) {
       res.status(502).json({
         error: `Impossible de joindre le LLM (${config.llm.baseUrl}, modèle ${config.llm.model}) : ${err.message}`,
@@ -71,9 +141,10 @@ app.post('/api/chat', async (req, res) => {
       res.end();
     }
   } finally {
-    if (reply.trim()) memory.add('assistant', reply.trim());
+    // Si le personnage a changé pendant la génération, la réponse va quand même dans le bon historique.
+    if (reply.trim()) target.add('assistant', reply.trim());
   }
-});
+}
 
 if (config.production) {
   app.use(express.static(config.dirs.dist));

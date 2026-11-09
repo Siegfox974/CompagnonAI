@@ -14,6 +14,7 @@
         <button type="button" class="icon" id="site-forward" title="Suivant">▶</button>
         <button type="button" class="icon" id="site-reload" title="Recharger">⟳</button>
         <input id="site-url" autocomplete="off" spellcheck="false" placeholder="Adresse du site…" />
+        <button type="button" class="icon" id="cinema-toggle" title="Mode cinéma : n'afficher que la vidéo">🎬</button>
         <button type="button" class="icon" id="avatar-toggle" title="Afficher / masquer l'avatar">👁</button>
       </form>
       <div id="site-frame"></div>
@@ -29,16 +30,22 @@
 
     <aside id="panel">
       <header>
-        <strong id="char-name">…</strong>
+        <select id="char-select" title="Changer de personnage"></select>
         <span id="emotion" class="pill">neutral</span>
         <span class="spacer"></span>
         <button id="site-toggle" class="icon" title="Site en fond" hidden>🌐</button>
+        <button id="react-toggle" class="icon" title="Réactions spontanées">💬</button>
         <button id="ambiance" class="icon" title="Ambiance">🎨</button>
+        <button id="wardrobe-toggle" class="icon" title="Garde-robe">👗</button>
         <button id="info-toggle" class="icon" title="Infos du modèle">ⓘ</button>
         <button id="reset" class="icon" title="Effacer la conversation">⟲</button>
       </header>
       <div id="watching" class="watching" hidden></div>
       <div id="vrm-info" hidden></div>
+      <div id="wardrobe" hidden>
+        <div class="wardrobe-head">Garde-robe <small>— décoche pour retirer</small></div>
+        <div id="wardrobe-list"></div>
+      </div>
       <div id="log"></div>
       <form id="input">
         <input id="message" autocomplete="off" placeholder="Écris-lui quelque chose…" />

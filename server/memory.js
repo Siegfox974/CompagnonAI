@@ -19,8 +19,18 @@ export class Memory {
     this.save();
   }
 
+  /**
+   * Derniers messages pour le LLM. Les messages consécutifs du même rôle sont fusionnés :
+   * certains modèles exigent l'alternance utilisateur / assistant (réactions spontanées).
+   */
   recent(n = config.contextMessages) {
-    return this.messages.slice(-n).map(({ role, content }) => ({ role, content }));
+    const out = [];
+    for (const { role, content } of this.messages.slice(-n)) {
+      const last = out.at(-1);
+      if (last?.role === role) last.content += `\n\n${content}`;
+      else out.push({ role, content });
+    }
+    return out;
   }
 
   reset() {

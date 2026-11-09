@@ -40,6 +40,46 @@ Bouton 🌐 : le site s'affiche à gauche et l'avatar se place dans le coin, par
   La ligne 👀 du panneau montre ce qu'elle « voit ».
 - Une page dont le titre ou les tags évoquent des mineurs est refusée : elle ne la commente pas.
 
+### Mode cinéma 🎬
+Isole le lecteur vidéo de la page (le plus grand `<video>` ou `<iframe>`) et masque tout le reste, en laissant de la place à droite pour l'avatar.
+Un bloqueur de pubs et de pisteurs (listes Ghostery / EasyList, mises en cache dans `data/`) est actif sur le site en fond.
+
+### Quel navigateur ?
+Le site en fond s'ouvre dans le **navigateur intégré à l'application** (Chromium, via Electron), séparé de Chrome ou Edge :
+rien n'apparaît dans leur historique. Ce n'est pas une navigation privée : cookies et cache sont gardés dans `data/electron/`.
+Pour tout effacer, fermer l'application et supprimer ce dossier.
+
+## Réactions spontanées 💬
+Elle prend la parole d'elle-même :
+- environ 7 s après l'ouverture d'une nouvelle page ;
+- quand tu regardes sans rien dire depuis 3 min ;
+- quand tu es silencieux depuis 6 min hors vidéo.
+
+Il y a toujours au moins 45 s entre deux prises de parole spontanées. Le bouton 💬 les active ou les désactive.
+
+## Personnages
+Le menu en haut du panneau permet de changer de personnage à tout moment. Chacun garde sa propre mémoire.
+- **Luna** (27 ans) : petite amie complice et joueuse.
+- **Victoria** (38 ans) : mommy dominante et perverse.
+- **Jade** (24 ans) : coquine espiègle et provocatrice.
+
+Pour en créer un, copier une fiche de `characters/`.
+
+## Garde-robe 👗
+Liste les parties du modèle, regroupées par matériau (Tops, Bottoms, Shoes, Hair…). Décocher une partie la retire.
+Le choix est mémorisé par modèle.
+⚠ Sur la plupart des modèles VRoid, il n'y a pas de peau sous les vêtements : retirer un haut laisse un vide.
+Pour un vrai résultat, il faut un modèle conçu pour (corps complet, vêtements séparés).
+
+## Expressions
+12 émotions que le LLM choisit, plusieurs par réponse : neutral, happy, excited, flirty, teasing, aroused, shy, relaxed, surprised, pout, sad, angry.
+Chacune combine :
+- un mélange d'expressions du visage ;
+- une posture (tête penchée ou baissée, buste en avant, déhanché plus ou moins marqué, respiration) ;
+- un geste ponctuel (hochement, clin d'œil, sursaut, regard fuyant, rebond).
+
+Le rougissement fonctionne si le modèle a une expression « blush ». Elle te regarde, regarde le chat quand tu écris, et jette des coups d'œil à la vidéo.
+
 ## Ambiances
 
 Bouton 🎨 : **Néon** (rose et violet), **Boudoir** (lumière chaude de bougie qui vacille) ou **Studio** (neutre).
@@ -67,11 +107,12 @@ Pour stocker les modèles Ollama hors du SSD : `setx OLLAMA_MODELS "D:\Ollama\mo
 
 ## Personnage
 
-Les fiches sont dans `characters/<id>.json` et se choisissent avec `CHARACTER=<id>` dans `.env`.
+Les fiches sont dans `characters/<id>.json`. Le personnage de départ se règle avec `CHARACTER=<id>` dans `.env`, puis se change depuis le menu.
 
 | Champ | Rôle |
 |---|---|
-| `name`, `age` | **`age` doit être un entier ≥ 18**, sinon le serveur refuse de démarrer |
+| `name`, `age` | **`age` doit être un entier ≥ 18**, sinon la fiche est ignorée |
+| `tagline` | Description courte affichée dans le menu |
 | `description`, `personality`, `scenario`, `style` | Injectés dans le prompt système |
 | `greeting` | Premier message (peut commencer par une balise d'émotion) |
 | `nsfw` | `true` autorise le contenu explicite |
@@ -80,7 +121,7 @@ L'historique est enregistré dans `data/history-<id>.json`. Le bouton ⟲ l'effa
 
 ## Émotions
 
-Le LLM préfixe ses réponses par une balise `[neutral]`, `[happy]`, `[angry]`, `[sad]`, `[relaxed]` ou `[surprised]`.
+Le LLM insère des balises d'émotion (`[flirty]`, `[shy]`…, voir « Expressions » plus haut).
 Le front retire ces balises à l'affichage et les applique en direct aux expressions du modèle VRM.
 
 ## Modèle VRM

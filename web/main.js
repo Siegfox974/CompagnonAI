@@ -30,6 +30,9 @@ function createAvatar() {
       setSpeaking: noop,
       setAmbiance: noop,
       setLayout: noop,
+      setAttention: noop,
+      getParts: () => [],
+      setPartVisible: noop,
       load: async () => {
         throw new Error('WebGL indisponible');
       },
@@ -88,11 +91,36 @@ async function loadVrm(url) {
     const meta = await avatar.load(url);
     hint.hidden = true;
     showMeta(meta);
+    modelKey = `wardrobe:${meta.title || 'modele'}`;
+    for (const name of load(modelKey, [])) avatar.setPartVisible(name, false);
+    renderWardrobe();
   } catch (err) {
     console.error(err);
     addMessage('error', `Chargement du VRM impossible : ${err.message}`);
   }
 }
+
+// ---------- Garde-robe ----------
+let modelKey = 'wardrobe:modele';
+function renderWardrobe() {
+  const list = $('#wardrobe-list');
+  list.innerHTML = '';
+  for (const part of avatar.getParts()) {
+    const label = document.createElement('label');
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = part.visible;
+    box.addEventListener('change', () => {
+      avatar.setPartVisible(part.name, box.checked);
+      const hidden = new Set(load(modelKey, []));
+      box.checked ? hidden.delete(part.name) : hidden.add(part.name);
+      save(modelKey, [...hidden]);
+    });
+    label.append(box, part.name);
+    list.append(label);
+  }
+}
+$('#wardrobe-toggle').addEventListener('click', () => ($('#wardrobe').hidden = !$('#wardrobe').hidden));
 
 function showMeta(meta) {
   vrmInfo.innerHTML = '';
@@ -130,6 +158,7 @@ addEventListener('drop', (e) => {
 });
 
 // ---------- Site en fond (app desktop) ----------
+let lastPageUrl = '';
 const site = {
   layer: $('#site-layer'),
   frame: $('#site-frame'),
@@ -159,6 +188,57 @@ const EXTRACT_PAGE = `(() => {
   };
 })()`;
 
+/** Mode cinéma : isole le lecteur vidéo de la page (le plus grand <video> ou <iframe>) et masque le reste. */
+const CINEMA_CSS = `
+html.cai-cinema, html.cai-cinema body { overflow: hidden !important; background: #000 !important; }
+html.cai-cinema body * { visibility: hidden !important; }
+html.cai-cinema .cai-player, html.cai-cinema .cai-player * { visibility: visible !important; }
+html.cai-cinema .cai-player {
+  position: fixed !important; left: 0 !important; top: 0 !important; bottom: 0 !important; right: auto !important;
+  width: calc(100vw - var(--cai-side, 0px)) !important; height: 100vh !important;
+  max-width: none !important; max-height: none !important; margin: 0 !important; padding: 0 !important;
+  transform: none !important; z-index: 2147483647 !important; background: #000 !important;
+}
+html.cai-cinema .cai-player video, html.cai-cinema iframe.cai-player { width: 100% !important; height: 100% !important; object-fit: contain !important; }`;
+const cinemaScript = (on, side) => `(() => {
+  const root = document.documentElement;
+  root.style.setProperty('--cai-side', '${side}px');
+  if (!${on}) { root.classList.remove('cai-cinema'); return true; }
+  const area = (e) => { const r = e.getBoundingClientRect(); return r.width * r.height; };
+  const candidates = [...document.querySelectorAll('video, iframe')].filter((e) => area(e) > 200 * 150);
+  if (!candidates.length) return false;
+  const media = candidates.sort((a, b) => area(b) - area(a))[0];
+  // Remonte jusqu'au conteneur du lecteur (pour garder les contrôles), sans englober la page.
+  let player = media;
+  while (player.parentElement && player.parentElement !== document.body && area(player.parentElement) <= area(media) * 1.6) {
+    player = player.parentElement;
+  }
+  document.querySelectorAll('.cai-player').forEach((e) => e.classList.remove('cai-player'));
+  player.classList.add('cai-player');
+  root.classList.add('cai-cinema');
+  return true;
+})()`;
+
+let cinema = load('cinema', false);
+async function applyCinema() {
+  const v = site.view;
+  if (!v) return;
+  $('#cinema-toggle').classList.toggle('on', cinema);
+  // Laisse une marge à droite pour l'avatar, sauf s'il est masqué.
+  const side = document.body.classList.contains('avatar-hidden') ? 0 : 340;
+  try {
+    if (cinema) await v.insertCSS(CINEMA_CSS);
+    let ok = await v.executeJavaScript(cinemaScript(cinema, side));
+    // Les lecteurs se chargent souvent après la page : on réessaie un peu plus tard.
+    for (let i = 0; cinema && !ok && i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 1500));
+      ok = await v.executeJavaScript(cinemaScript(cinema, side));
+    }
+  } catch {
+    /* page en cours de chargement */
+  }
+}
+
 function sendContext(page) {
   fetch('/api/context', {
     method: 'POST',
@@ -167,6 +247,11 @@ function sendContext(page) {
   })
     .then((r) => r.json())
     .then(({ forbidden }) => {
+      if (page && !forbidden && page.url !== lastPageUrl) {
+        lastPageUrl = page.url;
+        reactions.onNewPage();
+      }
+      if (!page) lastPageUrl = '';
       watchingEl.hidden = !page;
       watchingEl.classList.toggle('forbidden', !!forbidden);
       if (page) {
@@ -203,6 +288,7 @@ function ensureView(url) {
   v.addEventListener('did-navigate-in-page', (e) => e.isMainFrame && (syncUrl(), scheduleContext()));
   v.addEventListener('page-title-updated', scheduleContext);
   v.addEventListener('did-stop-loading', scheduleContext);
+  v.addEventListener('did-stop-loading', () => cinema && applyCinema());
   site.frame.append(v);
   site.view = v;
   return v;
@@ -222,6 +308,7 @@ function setSiteMode(on) {
   site.layer.hidden = !on;
   $('#site-toggle').classList.toggle('on', on);
   avatar.setLayout(on ? 'corner' : 'center');
+  avatar.setAttention(on ? 'screen' : 'user');
   save('siteMode', on);
   if (on) {
     const last = load('siteUrl', '');
@@ -246,7 +333,14 @@ if (isApp) {
   $('#avatar-toggle').addEventListener('click', (e) => {
     const hidden = document.body.classList.toggle('avatar-hidden');
     e.currentTarget.classList.toggle('on', !hidden);
+    if (cinema) applyCinema();
   });
+  $('#cinema-toggle').addEventListener('click', () => {
+    cinema = !cinema;
+    save('cinema', cinema);
+    applyCinema();
+  });
+  $('#cinema-toggle').classList.toggle('on', cinema);
   $('#avatar-toggle').classList.add('on');
   if (load('siteMode', false)) setSiteMode(true);
 } else {
@@ -254,10 +348,10 @@ if (isApp) {
 }
 
 // ---------- Conversation ----------
-async function send(message) {
+/** Envoie une requête au serveur et affiche la réponse en streaming dans une nouvelle bulle. */
+async function streamReply(url, body) {
   busy = true;
   form.querySelector('button').disabled = true;
-  addMessage('user', message);
   const bubble = addMessage('assistant');
   bubble.classList.add('typing');
   const parser = new TagParser(character.emotions, setEmotion);
@@ -270,10 +364,10 @@ async function send(message) {
   };
 
   try {
-    const res = await fetch('/api/chat', {
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -292,15 +386,71 @@ async function send(message) {
     avatar.setSpeaking(false);
     busy = false;
     form.querySelector('button').disabled = false;
-    input.focus();
+    reactions.touch();
   }
 }
+
+function send(message) {
+  addMessage('user', message);
+  avatar.playGesture?.('nod'); // elle acquiesce : « je t'écoute »
+  return streamReply('/api/chat', { message }).then(() => input.focus());
+}
+
+/**
+ * Réactions spontanées : elle parle d'elle-même quand tu ouvres une nouvelle vidéo,
+ * ou quand tu restes silencieux longtemps. Délai minimal entre deux prises de parole.
+ */
+const reactions = {
+  enabled: load('reactions', true),
+  lastActivity: Date.now(),
+  lastReaction: 0,
+  pageTimer: 0,
+  COOLDOWN: 45_000,
+  touch() {
+    this.lastActivity = Date.now();
+  },
+  canSpeak() {
+    return this.enabled && !busy && !input.value.trim() && Date.now() - this.lastReaction > this.COOLDOWN;
+  },
+  async fire(event) {
+    if (!this.canSpeak()) return;
+    this.lastReaction = Date.now();
+    await streamReply('/api/react', { event });
+  },
+  onNewPage() {
+    clearTimeout(this.pageTimer);
+    // On laisse quelques secondes pour que la vidéo démarre (et éviter de commenter chaque clic).
+    this.pageTimer = setTimeout(() => this.fire('new_page'), 7000);
+  },
+  tick() {
+    const silent = Date.now() - this.lastActivity;
+    const watchingSomething = !!lastPageUrl && document.body.classList.contains('site-mode');
+    if (watchingSomething && silent > 3 * 60_000) this.fire('still_watching');
+    else if (!watchingSomething && silent > 6 * 60_000) this.fire('idle');
+  },
+};
+setInterval(() => reactions.tick(), 20_000);
+const reactBtn = $('#react-toggle');
+reactBtn.classList.toggle('on', reactions.enabled);
+reactBtn.addEventListener('click', () => {
+  reactions.enabled = !reactions.enabled;
+  save('reactions', reactions.enabled);
+  reactBtn.classList.toggle('on', reactions.enabled);
+});
+
+// Quand tu écris, elle regarde le chat ; sinon toi, ou la vidéo par moments.
+input.addEventListener('input', () => {
+  reactions.touch();
+  avatar.setAttention(input.value ? 'chat' : document.body.classList.contains('site-mode') ? 'screen' : 'user');
+});
+input.addEventListener('blur', () => avatar.setAttention(document.body.classList.contains('site-mode') ? 'screen' : 'user'));
 
 form.addEventListener('submit', (e) => {
   e.preventDefault();
   const message = input.value.trim();
   if (!message || busy) return;
   input.value = '';
+  avatar.setAttention(document.body.classList.contains('site-mode') ? 'screen' : 'user');
   send(message);
 });
 
@@ -320,17 +470,39 @@ function greet() {
   addMessage('assistant', stripTags(character.greeting, character.emotions));
 }
 
-// ---------- Démarrage ----------
-(async () => {
-  character = await (await fetch('/api/character')).json();
-  $('#char-name').textContent = `${character.name}, ${character.age} ans`;
-  document.title = `${character.name} · CompagnonAI`;
+// ---------- Personnages ----------
+const charSelect = $('#char-select');
 
+async function showCharacter(c) {
+  character = c;
+  document.title = `${c.name} · CompagnonAI`;
+  log.innerHTML = '';
+  setEmotion('neutral');
   const history = await (await fetch('/api/history')).json();
   if (history.length === 0) greet();
-  for (const m of history) addMessage(m.role, stripTags(m.content, character.emotions));
+  for (const m of history) addMessage(m.role, stripTags(m.content, c.emotions));
   const lastEmo = [...history].reverse().find((m) => m.role === 'assistant')?.content.match(/\[(\w+)\][^[]*$/)?.[1];
   if (lastEmo) setEmotion(lastEmo);
+}
+
+charSelect.addEventListener('change', async () => {
+  const res = await fetch('/api/character', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: charSelect.value }),
+  });
+  if (res.ok) showCharacter(await res.json());
+});
+
+// ---------- Démarrage ----------
+(async () => {
+  const { current, list } = await (await fetch('/api/characters')).json();
+  for (const c of list) {
+    const o = new Option(`${c.name}, ${c.age} ans`, c.id, false, c.id === current);
+    o.title = c.tagline;
+    charSelect.append(o);
+  }
+  await showCharacter(await (await fetch('/api/character')).json());
 
   const def = await fetch('/models/default.vrm', { method: 'HEAD' });
   if (def.ok) loadVrm('/models/default.vrm');

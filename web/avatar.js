@@ -3,8 +3,31 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 
-const MOOD_EXPRESSIONS = ['happy', 'angry', 'sad', 'relaxed', 'surprised'];
+const BASE_EXPRESSIONS = ['happy', 'angry', 'sad', 'relaxed', 'surprised'];
 const VISEMES = ['aa', 'ih', 'ou', 'ee', 'oh'];
+
+/**
+ * Humeurs : mélange d'expressions VRM de base + posture + geste ponctuel.
+ * pose : tilt (tête penchée), yaw (tête tournée), pitch (>0 = baisse la tête), lean (buste en avant),
+ *        sway (amplitude du déhanché), speed (vitesse du déhanché), breath (rythme de respiration).
+ */
+const MOODS = {
+  neutral: { exp: {}, pose: {} },
+  happy: { exp: { happy: 1 }, pose: { sway: 1.2 }, gesture: 'nod' },
+  excited: { exp: { happy: 1, surprised: 0.3 }, pose: { sway: 1.4, speed: 1.4, breath: 1.4 }, gesture: 'bounce' },
+  flirty: { exp: { relaxed: 0.6, happy: 0.35 }, pose: { tilt: 0.14, lean: 0.06, sway: 1.7, speed: 0.75 }, gesture: 'wink', blush: 0.4 },
+  teasing: { exp: { happy: 0.65 }, pose: { tilt: 0.12, yaw: 0.1 }, gesture: 'wink', blush: 0.2 },
+  aroused: { exp: { relaxed: 0.85 }, mouth: 0.18, lids: 0.3, pose: { pitch: -0.06, sway: 1.9, speed: 0.6, breath: 2 }, blush: 1 },
+  shy: { exp: { happy: 0.4, sad: 0.25 }, lids: 0.15, pose: { pitch: 0.16, yaw: 0.2, tilt: 0.08, sway: 0.5 }, gesture: 'lookaway', blush: 1 },
+  relaxed: { exp: { relaxed: 1 }, pose: { sway: 1 } },
+  surprised: { exp: { surprised: 1 }, pose: { pitch: -0.08 }, gesture: 'jolt' },
+  pout: { exp: { angry: 0.35, sad: 0.35 }, pose: { yaw: -0.22, pitch: 0.05, sway: 0.4 } },
+  sad: { exp: { sad: 1 }, pose: { pitch: 0.12, sway: 0.4, breath: 0.8 } },
+  angry: { exp: { angry: 1 }, pose: { pitch: 0.06, sway: 0.3 }, gesture: 'shake' },
+};
+const POSE_DEFAULTS = { tilt: 0, yaw: 0, pitch: 0, lean: 0, sway: 1, speed: 1, breath: 1 };
+/** Expressions personnalisées de rougissement, présentes sur certains modèles. */
+const BLUSH_RE = /blush|cheek|tere|照れ|赤面|頬|ほほ|ポッ/i;
 const PANEL_W = 400;
 
 /** Préréglages d'éclairage : [couleur, intensité]. */
@@ -75,7 +98,16 @@ export class Avatar {
     this.vrm = null;
     this.layout = 'center';
     this.mood = 'neutral';
-    this.moodWeights = Object.fromEntries(MOOD_EXPRESSIONS.map((e) => [e, 0]));
+    this.expWeights = {};
+    this.pose = { ...POSE_DEFAULTS };
+    this.mouthBase = 0;
+    this.lids = 0;
+    this.blush = 0;
+    this.blushNames = [];
+    this.gesture = null;
+    this.attention = 'user';
+    this.glanceUntil = 0;
+    this.nextGlance = 5;
     this.speaking = false;
     this.mouthOpen = 0;
     this.viseme = 'aa';
@@ -155,6 +187,11 @@ export class Avatar {
     vrm.scene.traverse((o) => (o.frustumCulled = false));
 
     this.vrm = vrm;
+    // VRM 0.x : squelette retourné, les rotations autour de X et Z sont inversées.
+    this.flip = vrm.meta?.metaVersion === '0' ? -1 : 1;
+    this.blushNames = (vrm.expressionManager?.expressions ?? [])
+      .map((e) => e.expressionName)
+      .filter((n) => BLUSH_RE.test(n));
     this.scene.add(vrm.scene);
     if (vrm.lookAt) vrm.lookAt.target = this.lookTarget;
     this.restPose();
@@ -167,7 +204,7 @@ export class Avatar {
     const bone = (n) => this.vrm.humanoid.getNormalizedBoneNode(n);
     // En VRM 0.x le squelette regarde vers -Z (retourné ensuite par rotateVRM0) :
     // le sens des rotations est donc inversé par rapport au VRM 1.0.
-    const s = this.vrm.meta?.metaVersion === '0' ? -1 : 1;
+    const s = this.flip;
     bone('leftUpperArm')?.rotation.set(0, 0, -1.2 * s);
     bone('rightUpperArm')?.rotation.set(0, 0, 1.2 * s);
     bone('leftLowerArm')?.rotation.set(0, -0.25 * s, 0);
@@ -186,7 +223,37 @@ export class Avatar {
   }
 
   setEmotion(name) {
-    this.mood = MOOD_EXPRESSIONS.includes(name) ? name : 'neutral';
+    const mood = MOODS[name] ? name : 'neutral';
+    if (mood !== this.mood && MOODS[mood].gesture) this.playGesture(MOODS[mood].gesture);
+    this.mood = mood;
+  }
+
+  /** Geste bref joué par-dessus la posture : nod, bounce, wink, jolt, shake, lookaway. */
+  playGesture(type) {
+    this.gesture = { type, t: 0, side: Math.random() < 0.5 ? 'blinkLeft' : 'blinkRight' };
+  }
+
+  /** Où elle regarde : 'user' (toi / la souris), 'chat' (le panneau quand tu écris), 'screen' (la vidéo). */
+  setAttention(target) {
+    this.attention = target;
+  }
+
+  /** Parties du modèle regroupées par matériau (vêtements, accessoires, cheveux...). */
+  getParts() {
+    const parts = new Map();
+    this.vrm?.scene.traverse((o) => {
+      if (!o.isMesh) return;
+      for (const m of [o.material].flat()) {
+        const key = partName(m.name) || partName(o.name) || 'Sans nom';
+        if (!parts.has(key)) parts.set(key, []);
+        parts.get(key).push(m);
+      }
+    });
+    return [...parts].map(([name, mats]) => ({ name, visible: mats.some((m) => m.visible), mats }));
+  }
+
+  setPartVisible(name, visible) {
+    for (const p of this.getParts()) if (p.name === name) p.mats.forEach((m) => (m.visible = visible));
   }
 
   setSpeaking(on) {
@@ -199,62 +266,113 @@ export class Avatar {
     this.controls.update();
     this.animateAmbiance(t, dt);
 
-    const vrm = this.vrm;
-    if (vrm) {
-      const em = vrm.expressionManager;
-
-      // Émotion : transition douce vers l'expression demandée.
-      for (const e of MOOD_EXPRESSIONS) {
-        const goal = e === this.mood ? (this.speaking ? 0.7 : 1) : 0;
-        this.moodWeights[e] = THREE.MathUtils.damp(this.moodWeights[e], goal, 6, dt);
-        em?.setValue(e, this.moodWeights[e]);
-      }
-
-      // Bouche : alterne des visèmes pendant qu'elle « parle » (réponse en cours).
-      if (this.speaking && t > this.nextViseme) {
-        this.viseme = VISEMES[Math.floor(Math.random() * VISEMES.length)];
-        this.nextViseme = t + 0.08 + Math.random() * 0.1;
-      }
-      const mouthGoal = this.speaking ? 0.2 + 0.35 * Math.abs(Math.sin(t * 12)) : 0;
-      this.mouthOpen = THREE.MathUtils.damp(this.mouthOpen, mouthGoal, 18, dt);
-      for (const v of VISEMES) em?.setValue(v, v === this.viseme ? this.mouthOpen : 0);
-
-      // Clignements aléatoires.
-      if (this.blinkT < 0 && t > this.nextBlink) this.blinkT = 0;
-      let blink = 0;
-      if (this.blinkT >= 0) {
-        this.blinkT += dt;
-        blink = Math.sin(Math.min(this.blinkT / 0.15, 1) * Math.PI);
-        if (this.blinkT > 0.15) {
-          this.blinkT = -1;
-          this.nextBlink = t + 2 + Math.random() * 4;
-        }
-      }
-      em?.setValue('blink', this.mood === 'happy' ? blink * 0.4 : blink);
-
-      // Attitude : respiration, déhanché lent (les jambes compensent pour garder les pieds au sol),
-      // buste en contre-mouvement, tête légèrement penchée.
-      const bone = (n) => vrm.humanoid.getNormalizedBoneNode(n);
-      const breath = Math.sin(t * 1.6);
-      const sway = Math.sin(t * 0.8);
-      bone('hips')?.rotation.set(0, sway * 0.05, sway * 0.06);
-      bone('leftUpperLeg')?.rotation.set(0, 0, -sway * 0.06);
-      bone('rightUpperLeg')?.rotation.set(0, 0, -sway * 0.06);
-      bone('spine')?.rotation.set(0, Math.sin(t * 0.4) * 0.03, -sway * 0.045);
-      bone('chest')?.rotation.set(breath * 0.015, 0, -sway * 0.02);
-      bone('neck')?.rotation.set(0, 0, Math.sin(t * 0.7) * 0.02);
-      bone('head')?.rotation.set(0.03, 0, 0.07 + Math.sin(t * 0.5) * 0.025);
-
-      // Regard : suit le curseur.
-      this.lookTarget.position.set(
-        this.camera.position.x + this.mouse.x * 0.5,
-        this.camera.position.y + this.mouse.y * 0.3,
-        this.camera.position.z,
-      );
-
-      vrm.update(dt);
-    }
+    if (this.vrm) this.animateBody(t, dt);
     this.renderer.render(this.scene, this.camera);
+  }
+
+  animateBody(t, dt) {
+    const vrm = this.vrm;
+    const em = vrm.expressionManager;
+    const mood = MOODS[this.mood];
+    const damp = (a, b, k = 5) => THREE.MathUtils.damp(a, b, k, dt);
+    const set = (name, v) => em?.getExpression(name) && em.setValue(name, THREE.MathUtils.clamp(v, 0, 1));
+
+    // Expressions : transition douce vers le mélange de l'humeur.
+    for (const e of BASE_EXPRESSIONS) {
+      const goal = (mood.exp[e] ?? 0) * (this.speaking ? 0.75 : 1);
+      this.expWeights[e] = damp(this.expWeights[e] ?? 0, goal, 6);
+      set(e, this.expWeights[e]);
+    }
+    this.mouthBase = damp(this.mouthBase, mood.mouth ?? 0);
+    this.lids = damp(this.lids, mood.lids ?? 0);
+    this.blush = damp(this.blush, mood.blush ?? 0, 2);
+    for (const n of this.blushNames) set(n, this.blush);
+
+    // Posture : chaque paramètre glisse vers celui de l'humeur.
+    for (const k of Object.keys(POSE_DEFAULTS)) {
+      this.pose[k] = damp(this.pose[k], mood.pose[k] ?? POSE_DEFAULTS[k], 3);
+    }
+
+    // Geste ponctuel.
+    const g = { pitch: 0, yaw: 0, roll: 0, chest: 0, wink: 0 };
+    if (this.gesture) {
+      const k = (this.gesture.t += dt);
+      const env = Math.max(0, 1 - k / 0.9);
+      switch (this.gesture.type) {
+        case 'nod': g.pitch = Math.sin(k * 14) * 0.1 * env; break;
+        case 'bounce': g.chest = Math.abs(Math.sin(k * 12)) * -0.06 * env; g.pitch = Math.sin(k * 12) * 0.05 * env; break;
+        case 'wink': g.wink = k < 0.4 ? Math.sin((k / 0.4) * Math.PI) : 0; g.roll = 0.06 * env; break;
+        case 'jolt': g.pitch = -0.14 * Math.exp(-k * 5); g.chest = -0.05 * Math.exp(-k * 5); break;
+        case 'shake': g.yaw = Math.sin(k * 16) * 0.12 * env; break;
+        case 'lookaway': g.yaw = 0.15 * env; break;
+      }
+      if (k > 1.2) this.gesture = null;
+    }
+
+    // Bouche : base de l'humeur + visèmes pendant qu'elle « parle ».
+    if (this.speaking && t > this.nextViseme) {
+      this.viseme = VISEMES[Math.floor(Math.random() * VISEMES.length)];
+      this.nextViseme = t + 0.08 + Math.random() * 0.1;
+    }
+    const mouthGoal = this.speaking ? 0.2 + 0.35 * Math.abs(Math.sin(t * 12)) : 0;
+    this.mouthOpen = damp(this.mouthOpen, mouthGoal, 18);
+    for (const v of VISEMES) set(v, (v === this.viseme ? this.mouthOpen : 0) + (v === 'aa' ? this.mouthBase : 0));
+
+    // Paupières : clignements aléatoires + paupières mi-closes selon l'humeur + clin d'œil.
+    if (this.blinkT < 0 && t > this.nextBlink) this.blinkT = 0;
+    let blink = 0;
+    if (this.blinkT >= 0) {
+      this.blinkT += dt;
+      blink = Math.sin(Math.min(this.blinkT / 0.15, 1) * Math.PI);
+      if (this.blinkT > 0.15) {
+        this.blinkT = -1;
+        this.nextBlink = t + 2 + Math.random() * 4;
+      }
+    }
+    const happyish = (this.expWeights.happy ?? 0) > 0.5;
+    set('blink', Math.max(happyish ? blink * 0.4 : blink, this.lids));
+    set('blinkLeft', this.gesture?.side === 'blinkLeft' ? g.wink : 0);
+    set('blinkRight', this.gesture?.side === 'blinkRight' ? g.wink : 0);
+
+    // Regard : toi (souris), le panneau de chat quand tu écris, ou des coups d'œil à la vidéo.
+    let attention = this.attention;
+    if (attention === 'screen') {
+      if (t > this.nextGlance) {
+        this.glanceUntil = t + 2.5 + Math.random() * 3;
+        this.nextGlance = this.glanceUntil + 4 + Math.random() * 6;
+      }
+      if (t > this.glanceUntil) attention = 'user';
+    }
+    const cam = this.camera.position;
+    const look = {
+      user: [cam.x + this.mouse.x * 0.5, cam.y + this.mouse.y * 0.3, cam.z, 0],
+      chat: [cam.x + 1.2, cam.y - 0.25, cam.z, 0.22],
+      screen: [-2.5, cam.y - 0.1, 0.6, -0.35],
+    }[attention];
+    this.lookTarget.position.set(look[0], look[1], look[2]);
+    this.attYaw = damp(this.attYaw ?? 0, look[3], 3);
+
+    // Corps : respiration, déhanché (jambes en compensation), buste en contre-mouvement, tête.
+    const bone = (n) => vrm.humanoid.getNormalizedBoneNode(n);
+    const f = this.flip ?? 1; // rotations X et Z inversées en VRM 0.x
+    const p = this.pose;
+    this.swayPhase = (this.swayPhase ?? 0) + dt * 0.8 * p.speed;
+    this.breathPhase = (this.breathPhase ?? 0) + dt * 1.6 * p.breath;
+    const breath = Math.sin(this.breathPhase);
+    const sway = Math.sin(this.swayPhase) * p.sway;
+    bone('hips')?.rotation.set(0, sway * 0.05, f * sway * 0.06);
+    bone('leftUpperLeg')?.rotation.set(0, 0, -f * sway * 0.06);
+    bone('rightUpperLeg')?.rotation.set(0, 0, -f * sway * 0.06);
+    bone('spine')?.rotation.set(f * p.lean * 0.5, Math.sin(t * 0.4) * 0.03, -f * sway * 0.045);
+    bone('chest')?.rotation.set(f * (breath * 0.015 * p.breath + p.lean * 0.5 + g.chest), 0, -f * sway * 0.02);
+    bone('neck')?.rotation.set(0, this.attYaw * 0.4, f * Math.sin(t * 0.7) * 0.02);
+    bone('head')?.rotation.set(
+      f * (0.03 + p.pitch + g.pitch),
+      p.yaw + g.yaw + this.attYaw * 0.6,
+      f * (0.07 + p.tilt + g.roll + Math.sin(t * 0.5) * 0.025),
+    );
+
+    vrm.update(dt);
   }
 
   animateAmbiance(t, dt) {
@@ -309,6 +427,15 @@ function makeParticles(count = 140) {
   const points = new THREE.Points(geometry, material);
   points.frustumCulled = false;
   return points;
+}
+
+/** Nom lisible d'un matériau VRoid / Unity : retire « (Instance) », « (Outline) », préfixes N00_000_... */
+function partName(raw = '') {
+  return raw
+    .replace(/\s*\((Instance|Outline|Clone)\)/gi, '')
+    .replace(/_?Outline$/i, '')
+    .replace(/^N\d+_\d+_\d+_/, '')
+    .trim();
 }
 
 /** Métadonnées et permissions d'usage déclarées par l'auteur du modèle (VRM 0.x et 1.0). */

@@ -39,8 +39,16 @@
 - Ambiances d'éclairage, particules et déhanché au repos.
 - Voix retirée pour l'instant (trop lourde et lente). La bouche bouge pendant l'écriture de la réponse.
 
-### Prochaine étape : réactions spontanées
-- Elle commente d'elle-même un changement de vidéo, avec un délai minimal entre deux remarques et une probabilité réglable.
+### Fait : immersion et interaction
+- Mode cinéma (isolement du lecteur) et bloqueur de pubs (`@ghostery/adblocker-electron`).
+- Réactions spontanées : `POST /api/react` avec une consigne de mise en scène non enregistrée dans l'historique. Les messages consécutifs de même rôle sont fusionnés pour les modèles qui exigent l'alternance.
+- 12 humeurs (expressions, posture, gestes), rougissement, regard dirigé (toi, le chat ou la vidéo).
+- Personnages multiples changeables à chaud (choix mémorisé dans `data/settings.json`), garde-robe par matériau.
+
+### Pistes suivantes
+- Le personnage pilote sa tenue (balise `[outfit:…]`), avec des tenues préparées par modèle.
+- Animations `.vrma` (danse, poses, gestes des mains).
+- Mémoire long terme (souvenirs, préférences).
 
 ### MVP 2 : voix et mémoire (reporté)
 - **STT** : `faster-whisper` en service Python local, avec détection d'activité vocale (VAD) pour parler sans appuyer sur un bouton.

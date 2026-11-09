@@ -3,7 +3,9 @@
 // d'affichage en iframe (X-Frame-Options) que posent la plupart des sites.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, BrowserWindow, shell } from 'electron';
+import fs from 'node:fs/promises';
+import { app, BrowserWindow, session, shell } from 'electron';
+import { ElectronBlocker } from '@ghostery/adblocker-electron';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -27,9 +29,29 @@ app.on('web-contents-created', (_e, contents) => {
   if (contents.getType() === 'webview') contents.setWindowOpenHandler(() => ({ action: 'deny' }));
 });
 
+/**
+ * Bloqueur de pubs et de pisteurs pour le site en fond (listes EasyList/Ghostery,
+ * téléchargées au premier lancement puis mises en cache dans data/).
+ */
+async function enableAdblock() {
+  try {
+    const blocker = await ElectronBlocker.fromPrebuiltAdsAndTracking(fetch, {
+      path: path.join(ROOT, 'data', 'adblock-cache.bin'),
+      read: fs.readFile,
+      write: fs.writeFile,
+    });
+    blocker.enableBlockingInSession(session.fromPartition('persist:site'));
+    console.log('Bloqueur de pubs actif.');
+  } catch (err) {
+    console.warn('Bloqueur de pubs indisponible :', err.message);
+  }
+}
+
 const { ready } = await import('../server/index.js');
 
 app.whenReady().then(async () => {
+  // On n'attend pas plus de 8 s le téléchargement des listes au premier lancement.
+  await Promise.race([enableAdblock(), new Promise((r) => setTimeout(r, 8000))]);
   const url = await ready;
   const win = new BrowserWindow({
     width: 1600,

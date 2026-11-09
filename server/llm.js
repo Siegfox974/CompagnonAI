@@ -5,8 +5,8 @@ import { config } from './config.js';
  * Fonctionne avec Ollama, llama.cpp server, LM Studio, KoboldCpp, vLLM...
  * Renvoie un itérateur asynchrone de fragments de texte.
  */
-export async function* streamChat(messages, { signal } = {}) {
-  const { baseUrl, model, apiKey, temperature, maxTokens } = config.llm;
+export async function* streamChat(messages, { signal, maxTokens = config.llm.maxTokens } = {}) {
+  const { baseUrl, model, apiKey, temperature } = config.llm;
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     signal,

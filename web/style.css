@@ -50,6 +50,13 @@ body.site-mode.avatar-hidden #scene { visibility: hidden; }
 #panel header { display: flex; align-items: center; gap: 6px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
 .spacer { flex: 1; }
 .pill { font-size: 12px; padding: 2px 8px; border-radius: 99px; background: #ffffff14; color: var(--muted); }
+#char-select { background: transparent; color: var(--text); border: 0; font: inherit; font-weight: 600; cursor: pointer; max-width: 150px; }
+#char-select option { background: #1b1020; color: var(--text); }
+#wardrobe { max-height: 40%; overflow-y: auto; padding: 8px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
+#wardrobe[hidden] { display: none; }
+.wardrobe-head { color: var(--muted); margin-bottom: 6px; }
+#wardrobe label { display: flex; gap: 8px; align-items: center; padding: 2px 0; cursor: pointer; }
+#wardrobe input { accent-color: var(--accent); }
 #vrm-info, .watching { padding: 8px 14px; font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--line); }
 #vrm-info .warn, .watching.forbidden { color: #ffb36b; }
 .watching { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
