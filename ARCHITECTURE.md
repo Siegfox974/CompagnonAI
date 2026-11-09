@@ -33,7 +33,16 @@
 - Voix via Web Speech, découpée par phrases pendant le streaming, bouche animée.
 - Fiches personnage, historique persistant, lecture des permissions VRM.
 
-### MVP 2 : voix et mémoire
+### Fait depuis : application desktop et site en fond
+- Electron : le site est chargé dans un `<webview>`, ce qui contourne `X-Frame-Options`. Pop-ups bloquées, session persistante dans `data/electron/`.
+- Extraction du titre, de la description et des tags à chaque navigation, puis `POST /api/context`, injecté dans le prompt système (`server/watching.js`), avec refus des contenus évoquant des mineurs.
+- Ambiances d'éclairage, particules et déhanché au repos.
+- Voix retirée pour l'instant (trop lourde et lente). La bouche bouge pendant l'écriture de la réponse.
+
+### Prochaine étape : réactions spontanées
+- Elle commente d'elle-même un changement de vidéo, avec un délai minimal entre deux remarques et une probabilité réglable.
+
+### MVP 2 : voix et mémoire (reporté)
 - **STT** : `faster-whisper` en service Python local, avec détection d'activité vocale (VAD) pour parler sans appuyer sur un bouton.
 - **TTS** : Kokoro (Apache 2.0) ou Piper. On envoie l'audio au navigateur et on calcule le **lip-sync** à partir de l'amplitude, ou mieux, des phonèmes.
 - **Mémoire long terme** : résumé glissant au-delà de `CONTEXT_MESSAGES`, plus des faits marquants extraits par le LLM et indexés (sqlite-vec), réinjectés quand ils sont pertinents.

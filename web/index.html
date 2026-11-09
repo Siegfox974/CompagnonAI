@@ -6,7 +6,19 @@
     <title>CompagnonAI</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
-  <body>
+  <body data-ambiance="neon">
+    <!-- Site en fond (app desktop uniquement) -->
+    <section id="site-layer" hidden>
+      <form id="site-bar">
+        <button type="button" class="icon" id="site-back" title="Précédent">◀</button>
+        <button type="button" class="icon" id="site-forward" title="Suivant">▶</button>
+        <button type="button" class="icon" id="site-reload" title="Recharger">⟳</button>
+        <input id="site-url" autocomplete="off" spellcheck="false" placeholder="Adresse du site…" />
+        <button type="button" class="icon" id="avatar-toggle" title="Afficher / masquer l'avatar">👁</button>
+      </form>
+      <div id="site-frame"></div>
+    </section>
+
     <canvas id="scene"></canvas>
 
     <div id="drop-hint" class="hint">
@@ -20,10 +32,12 @@
         <strong id="char-name">…</strong>
         <span id="emotion" class="pill">neutral</span>
         <span class="spacer"></span>
-        <button id="tts-toggle" class="icon" title="Voix">🔊</button>
+        <button id="site-toggle" class="icon" title="Site en fond" hidden>🌐</button>
+        <button id="ambiance" class="icon" title="Ambiance">🎨</button>
         <button id="info-toggle" class="icon" title="Infos du modèle">ⓘ</button>
         <button id="reset" class="icon" title="Effacer la conversation">⟲</button>
       </header>
+      <div id="watching" class="watching" hidden></div>
       <div id="vrm-info" hidden></div>
       <div id="log"></div>
       <form id="input">

@@ -1,5 +1,4 @@
-import { Avatar } from './avatar.js';
-import { Speaker } from './tts.js';
+import { Avatar, AMBIANCES } from './avatar.js';
 import { TagParser, stripTags } from './tags.js';
 
 const $ = (s) => document.querySelector(s);
@@ -9,12 +8,34 @@ const input = $('#message');
 const hint = $('#drop-hint');
 const emotionPill = $('#emotion');
 const vrmInfo = $('#vrm-info');
+const watchingEl = $('#watching');
 
-const avatar = new Avatar($('#scene'));
-const speaker = new Speaker({ onSpeakingChange: (on) => avatar.setSpeaking(on) });
+const isApp = navigator.userAgent.includes('Electron');
+const avatar = createAvatar();
 let character = { name: '…', emotions: ['neutral'] };
 let busy = false;
-let ttsOn = load('ttsOn', true);
+
+/** Sans WebGL (pilote graphique absent ou bloqué), le chat doit continuer de fonctionner. */
+function createAvatar() {
+  try {
+    return new Avatar($('#scene'));
+  } catch (err) {
+    console.error(err);
+    queueMicrotask(() =>
+      addMessage('error', "Affichage 3D indisponible (WebGL). Mets à jour le pilote de ta carte graphique. Le chat reste utilisable."),
+    );
+    const noop = () => {};
+    return {
+      setEmotion: noop,
+      setSpeaking: noop,
+      setAmbiance: noop,
+      setLayout: noop,
+      load: async () => {
+        throw new Error('WebGL indisponible');
+      },
+    };
+  }
+}
 
 function load(key, fallback) {
   try {
@@ -45,6 +66,21 @@ function addMessage(role, text = '') {
   log.scrollTop = log.scrollHeight;
   return el;
 }
+
+// ---------- Ambiance ----------
+const ambianceNames = Object.keys(AMBIANCES);
+let ambiance = load('ambiance', 'neon');
+function applyAmbiance(name) {
+  ambiance = AMBIANCES[name] ? name : 'neon';
+  document.body.dataset.ambiance = ambiance;
+  avatar.setAmbiance(ambiance);
+  $('#ambiance').title = `Ambiance : ${AMBIANCES[ambiance].label}`;
+  save('ambiance', ambiance);
+}
+$('#ambiance').addEventListener('click', () => {
+  applyAmbiance(ambianceNames[(ambianceNames.indexOf(ambiance) + 1) % ambianceNames.length]);
+});
+applyAmbiance(ambiance);
 
 // ---------- Modèle VRM ----------
 async function loadVrm(url) {
@@ -93,20 +129,144 @@ addEventListener('drop', (e) => {
   if (f) loadVrm(URL.createObjectURL(f));
 });
 
+// ---------- Site en fond (app desktop) ----------
+const site = {
+  layer: $('#site-layer'),
+  frame: $('#site-frame'),
+  url: $('#site-url'),
+  view: null,
+  contextTimer: 0,
+};
+
+function normalizeUrl(raw) {
+  const s = raw.trim();
+  if (!s) return '';
+  return /^https?:\/\//i.test(s) ? s : `https://${s}`;
+}
+
+/** Récupère titre, description et tags visibles de la page pour que le personnage sache ce qu'il regarde. */
+const EXTRACT_PAGE = `(() => {
+  const meta = (s) => document.querySelector(s)?.content || '';
+  const links = [...document.querySelectorAll('a[href*="/tag"], a[href*="/categor"], a[href*="/cat/"], a[href*="/search/"]')]
+    .slice(0, 40).map((a) => a.textContent.trim()).filter((t) => t && t.length < 40);
+  const keywords = meta('meta[name="keywords"]').split(',');
+  const tags = [...new Set([...keywords, ...links].map((t) => t.trim().toLowerCase()).filter(Boolean))].slice(0, 25);
+  return {
+    url: location.href,
+    title: meta('meta[property="og:title"]') || document.title,
+    description: meta('meta[name="description"]') || meta('meta[property="og:description"]'),
+    tags: tags.join(', '),
+  };
+})()`;
+
+function sendContext(page) {
+  fetch('/api/context', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(page ?? {}),
+  })
+    .then((r) => r.json())
+    .then(({ forbidden }) => {
+      watchingEl.hidden = !page;
+      watchingEl.classList.toggle('forbidden', !!forbidden);
+      if (page) {
+        watchingEl.textContent = forbidden
+          ? '⛔ Page refusée : contenu impliquant des mineurs'
+          : `👀 ${new URL(page.url).hostname.replace(/^www\./, '')} — ${page.title}`;
+        watchingEl.title = page.tags ? `Tags : ${page.tags}` : '';
+      }
+    })
+    .catch(() => {});
+}
+
+function scheduleContext() {
+  clearTimeout(site.contextTimer);
+  site.contextTimer = setTimeout(async () => {
+    try {
+      sendContext(await site.view.executeJavaScript(EXTRACT_PAGE));
+    } catch {
+      sendContext({ url: site.view.getURL(), title: site.view.getTitle() });
+    }
+  }, 800);
+}
+
+function ensureView(url) {
+  if (site.view) return site.view;
+  const v = document.createElement('webview');
+  v.setAttribute('partition', 'persist:site'); // garde cookies et vérification d'âge entre deux sessions
+  v.setAttribute('src', url);
+  const syncUrl = () => {
+    site.url.value = v.getURL();
+    save('siteUrl', v.getURL());
+  };
+  v.addEventListener('did-navigate', syncUrl);
+  v.addEventListener('did-navigate-in-page', (e) => e.isMainFrame && (syncUrl(), scheduleContext()));
+  v.addEventListener('page-title-updated', scheduleContext);
+  v.addEventListener('did-stop-loading', scheduleContext);
+  site.frame.append(v);
+  site.view = v;
+  return v;
+}
+
+function openSite(raw) {
+  const url = normalizeUrl(raw);
+  if (!url) return;
+  if (site.view) site.view.loadURL(url);
+  else ensureView(url);
+  site.url.value = url;
+  save('siteUrl', url);
+}
+
+function setSiteMode(on) {
+  document.body.classList.toggle('site-mode', on);
+  site.layer.hidden = !on;
+  $('#site-toggle').classList.toggle('on', on);
+  avatar.setLayout(on ? 'corner' : 'center');
+  save('siteMode', on);
+  if (on) {
+    const last = load('siteUrl', '');
+    if (last && !site.view) openSite(last);
+    if (!site.view) site.url.focus();
+    else scheduleContext();
+  } else {
+    sendContext(null);
+  }
+}
+
+if (isApp) {
+  $('#site-toggle').hidden = false;
+  $('#site-toggle').addEventListener('click', () => setSiteMode(!document.body.classList.contains('site-mode')));
+  $('#site-bar').addEventListener('submit', (e) => {
+    e.preventDefault();
+    openSite(site.url.value);
+  });
+  $('#site-back').addEventListener('click', () => site.view?.canGoBack() && site.view.goBack());
+  $('#site-forward').addEventListener('click', () => site.view?.canGoForward() && site.view.goForward());
+  $('#site-reload').addEventListener('click', () => site.view?.reload());
+  $('#avatar-toggle').addEventListener('click', (e) => {
+    const hidden = document.body.classList.toggle('avatar-hidden');
+    e.currentTarget.classList.toggle('on', !hidden);
+  });
+  $('#avatar-toggle').classList.add('on');
+  if (load('siteMode', false)) setSiteMode(true);
+} else {
+  sendContext(null);
+}
+
 // ---------- Conversation ----------
 async function send(message) {
   busy = true;
   form.querySelector('button').disabled = true;
-  speaker.stop();
   addMessage('user', message);
   const bubble = addMessage('assistant');
+  bubble.classList.add('typing');
   const parser = new TagParser(character.emotions, setEmotion);
 
   const append = (text) => {
     if (!text) return;
     bubble.textContent = (bubble.textContent + text).replace(/^\s+/, '');
     log.scrollTop = log.scrollHeight;
-    if (ttsOn) speaker.feed(text);
+    avatar.setSpeaking(true);
   };
 
   try {
@@ -123,12 +283,13 @@ async function send(message) {
       append(parser.push(value));
     }
     append(parser.flush());
-    if (ttsOn) speaker.flush();
     if (!bubble.textContent.trim()) bubble.remove();
   } catch (err) {
     bubble.remove();
     addMessage('error', err.message);
   } finally {
+    bubble.classList.remove('typing');
+    avatar.setSpeaking(false);
     busy = false;
     form.querySelector('button').disabled = false;
     input.focus();
@@ -150,15 +311,6 @@ $('#reset').addEventListener('click', async () => {
   greet();
 });
 
-const ttsBtn = $('#tts-toggle');
-const renderTts = () => ttsBtn.classList.toggle('off', !ttsOn);
-ttsBtn.addEventListener('click', () => {
-  ttsOn = !ttsOn;
-  save('ttsOn', ttsOn);
-  if (!ttsOn) speaker.stop();
-  renderTts();
-});
-renderTts();
 $('#info-toggle').addEventListener('click', () => (vrmInfo.hidden = !vrmInfo.hidden));
 
 function greet() {

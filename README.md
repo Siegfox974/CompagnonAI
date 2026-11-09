@@ -3,7 +3,8 @@
 Compagnon IA pour adulte, **100 % local** : un personnage VRM animé avec qui on discute, qui réagit avec des émotions et qui parle.
 Usage personnel, rien ne quitte la machine.
 
-> État actuel : **MVP 1**. Avatar VRM, chat en streaming avec un LLM local, émotions, voix du navigateur, mémoire persistante.
+> État actuel : application desktop avec avatar VRM, chat en streaming avec un LLM local, émotions, ambiances
+> (néon, boudoir, studio), site en fond dont elle connaît le titre et les tags, mémoire persistante.
 > Feuille de route complète dans [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Prérequis
@@ -22,13 +23,33 @@ Usage personnel, rien ne quitte la machine.
 ```bash
 npm install
 cp .env.example .env   # puis ajuster LLM_MODEL
-npm run dev
+npm run app            # application desktop (recommandé)
 ```
 
-Ouvrir http://localhost:3000, puis glisser un fichier `.vrm` sur la page.
-Pour qu'il se charge automatiquement, le placer dans `models/default.vrm`.
+Glisser un fichier `.vrm` dans la fenêtre. Pour qu'il se charge automatiquement, le placer dans `models/default.vrm`.
 
-Version optimisée : `npm run build`, puis `npm start`.
+`npm run dev` lance la version navigateur sur http://localhost:3000. Elle ne permet pas d'afficher un site en fond.
+
+## Site en fond
+
+Bouton 🌐 : le site s'affiche à gauche et l'avatar se place dans le coin, par-dessus, sans bloquer les clics.
+- La barre du haut permet de saisir une adresse et de naviguer ; 👁 masque ou affiche l'avatar.
+- Les pop-ups sont bloquées.
+- Cookies et cache restent dans `data/electron/`, donc pas sur C:.
+- À chaque page, le titre, la description et les tags sont transmis au personnage, qui peut en parler quand tu lui écris.
+  La ligne 👀 du panneau montre ce qu'elle « voit ».
+- Une page dont le titre ou les tags évoquent des mineurs est refusée : elle ne la commente pas.
+
+## Ambiances
+
+Bouton 🎨 : **Néon** (rose et violet), **Boudoir** (lumière chaude de bougie qui vacille) ou **Studio** (neutre).
+
+## Réponses lentes ?
+
+La vitesse dépend du LLM et de la carte graphique. `ollama ps` doit afficher **100% GPU**. Sinon :
+- choisir un modèle plus petit (7–8B au lieu de 12B) ;
+- baisser `LLM_MAX_TOKENS` dans `.env` (par exemple 200) ;
+- fermer les autres programmes qui utilisent la carte graphique.
 
 ## Windows : installation et mises à jour
 
@@ -39,7 +60,7 @@ cd /d D:\
 git clone -b claude/practical-hamilton-vv7br4 https://github.com/siegfox974/CompagnonAI.git
 ```
 
-- **Lancer** : double-clic sur `lancer.bat`.
+- **Lancer** : double-clic sur `lancer.bat` (application desktop). `lancer-navigateur.bat` ouvre la version navigateur.
 - **Mettre à jour** : double-clic sur `mettre-a-jour.bat`. Seuls les fichiers modifiés sont téléchargés. Les modèles Ollama, `.env`, `models/` et `data/` ne sont pas touchés.
 
 Pour stocker les modèles Ollama hors du SSD : `setx OLLAMA_MODELS "D:\Ollama\models"`, puis redémarrer Ollama.

@@ -5,10 +5,12 @@ import { config, ROOT } from './config.js';
 import { loadCharacter, buildSystemPrompt, EMOTIONS } from './character.js';
 import { Memory } from './memory.js';
 import { streamChat } from './llm.js';
+import { sanitizeWatching, watchingPrompt } from './watching.js';
 
 const character = loadCharacter();
 const memory = new Memory(character.id);
 const systemPrompt = buildSystemPrompt(character);
+let watching = null;
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -26,6 +28,12 @@ app.post('/api/reset', (_req, res) => {
   res.json({ ok: true });
 });
 
+app.post('/api/context', (req, res) => {
+  watching = req.body?.url ? sanitizeWatching(req.body) : null;
+  if (watching?.forbidden) console.warn('[context] page refusée (mineurs) :', watching.host);
+  res.json({ ok: true, forbidden: !!watching?.forbidden });
+});
+
 app.post('/api/chat', async (req, res) => {
   const message = String(req.body?.message ?? '').trim();
   if (!message) return res.status(400).json({ error: 'Message vide' });
@@ -41,7 +49,8 @@ app.post('/api/chat', async (req, res) => {
 
   let reply = '';
   try {
-    const stream = streamChat([{ role: 'system', content: systemPrompt }, ...memory.recent()], {
+    const system = [systemPrompt, watchingPrompt(watching)].filter(Boolean).join('\n\n');
+    const stream = streamChat([{ role: 'system', content: system }, ...memory.recent()], {
       signal: abort.signal,
     });
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -78,9 +87,13 @@ if (config.production) {
   app.use(vite.middlewares);
 }
 
-app.listen(config.port, '127.0.0.1', () => {
-  const hasDefault = fs.existsSync(path.join(config.dirs.models, 'default.vrm'));
-  console.log(`CompagnonAI : http://localhost:${config.port}`);
-  console.log(`Personnage : ${character.name} (${character.age} ans) | LLM : ${config.llm.model} @ ${config.llm.baseUrl}`);
-  if (!hasDefault) console.log('Astuce : place un modèle dans models/default.vrm pour le charger automatiquement.');
+export const ready = new Promise((resolve, reject) => {
+  const server = app.listen(config.port, '127.0.0.1', () => {
+    const hasDefault = fs.existsSync(path.join(config.dirs.models, 'default.vrm'));
+    console.log(`CompagnonAI : http://localhost:${config.port}`);
+    console.log(`Personnage : ${character.name} (${character.age} ans) | LLM : ${config.llm.model} @ ${config.llm.baseUrl}`);
+    if (!hasDefault) console.log('Astuce : place un modèle dans models/default.vrm pour le charger automatiquement.');
+    resolve(`http://localhost:${config.port}`);
+  });
+  server.on('error', reject);
 });
