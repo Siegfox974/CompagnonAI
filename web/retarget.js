@@ -9,8 +9,9 @@ import { sampleBone, sampleMorph } from './vmd.js';
  * - Les bras MMD sont au repos en « A » (≈35° vers le bas), ceux du VRM en « T » : on compense à l'épaule
  *   et on transpose les rotations des os enfants (avant-bras, main, doigts) dans ce repère incliné.
  * - Les jambes MMD sont pilotées par IK (足ＩＫ) : on recalcule cuisse + genou pour placer la cheville.
- * - L'os racine (全ての親) n'est pas appliqué : il place le personnage dans la scène MMD d'origine
- *   (rotation, déplacement), alors qu'ici elle doit rester face à l'utilisateur.
+ * - L'os racine (全ての親) : on garde son inclinaison (se coucher, se pencher) et sa hauteur, mais pas
+ *   sa rotation horizontale ni son déplacement au sol, qui placent le personnage dans la scène MMD
+ *   d'origine — ici elle doit rester face à l'utilisateur.
  */
 
 const A_POSE_ANGLE = THREE.MathUtils.degToRad(35);
@@ -142,18 +143,23 @@ export class MotionPlayer {
   apply(t, w) {
     this.t = t % this.clip.duration;
     this.cache.clear();
+    // Os racine : inclinaison seule (rotation autour de Y retirée) + hauteur.
+    const root = this.get('全ての親');
+    this.rootSwing = root ? withoutYaw(root.q) : new THREE.Quaternion();
+    this.rootLift = new THREE.Vector3(0, root ? root.pos[1] * this.scale : 0, 0);
     const bone = this.bone;
     const set = (name, q) => bone(name)?.quaternion.slerp(q, w);
 
     // Bassin : centre + groove + taille + bas du corps. Buste : compense le bas du corps.
     const lower = this.q('下半身');
-    set('hips', this.chain('センター', 'グルーブ', '腰').multiply(lower));
+    set('hips', this.rootSwing.clone().multiply(this.chain('センター', 'グルーブ', '腰')).multiply(lower));
     const off = [0, 0, 0];
     for (const n of ['センター', 'グルーブ']) {
       const b = this.get(n);
       if (b) for (let i = 0; i < 3; i++) off[i] += b.pos[i];
     }
-    bone('hips')?.position.lerpVectors(bone('hips').position.clone(), this.hipsRest.clone().add(this.posToRig(off)), w);
+    const hipsPos = this.hipsRest.clone().add(this.posToRig(off)).applyQuaternion(this.rootSwing).add(this.rootLift);
+    bone('hips')?.position.lerpVectors(bone('hips').position.clone(), hipsPos, w);
     set('spine', lower.clone().invert().multiply(this.q('上半身')));
     set('chest', this.q('上半身2'));
     set('neck', this.q('首'));
@@ -204,7 +210,9 @@ export class MotionPlayer {
       const b = this.get(n);
       if (b) for (let i = 0; i < 3; i++) off[i] += b.pos[i];
     }
-    const target = this.rigRoot.localToWorld(this.footRest[s].clone().add(this.posToRig(off)));
+    const target = this.rigRoot.localToWorld(
+      this.footRest[s].clone().add(this.posToRig(off)).applyQuaternion(this.rootSwing).add(this.rootLift),
+    );
 
     const startUp = up.quaternion.clone();
     const startLo = lo.quaternion.clone();
@@ -221,7 +229,7 @@ export class MotionPlayer {
     const ik = this.get(`${j}足ＩＫ`);
     if (ik) {
       const rigQ = this.rigRoot.getWorldQuaternion(new THREE.Quaternion());
-      const worldQ = rigQ.multiply(this.q(`${j}足IK親`)).multiply(ik.q.clone());
+      const worldQ = rigQ.multiply(this.rootSwing).multiply(this.q(`${j}足IK親`)).multiply(ik.q.clone());
       const parentQ = lo.getWorldQuaternion(new THREE.Quaternion());
       foot.quaternion.slerp(parentQ.invert().multiply(worldQ), w);
     }
@@ -232,6 +240,16 @@ export class MotionPlayer {
     for (const n of MOTION_BONES) this.bone(n)?.quaternion.identity();
     this.bone('hips')?.position.copy(this.hipsRest);
   }
+}
+
+/**
+ * Retire d'une rotation son cap (rotation autour de l'axe vertical Y, appliquée en dernier dans la scène) :
+ * q = cap × inclinaison  →  inclinaison = cap⁻¹ × q.
+ */
+function withoutYaw(q) {
+  const yaw = new THREE.Quaternion(0, q.y, 0, q.w);
+  if (yaw.lengthSq() < 1e-8) return q.clone();
+  return yaw.normalize().invert().multiply(q);
 }
 
 /** IK analytique à deux os en coordonnées monde ; `poleDir` = direction vers laquelle plier l'articulation. */
