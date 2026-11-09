@@ -153,16 +153,24 @@ export class Avatar {
     if (this.vrm) this.frame();
   }
 
+  /** Multiplie l'intensité de l'éclairage (les matériaux MMD réagissent plus fort que les VRM). */
+  setBrightness(k) {
+    this.brightness = k;
+    if (this.ambiance) this.setAmbiance(this.ambianceName);
+  }
+
   setAmbiance(name) {
     const a = AMBIANCES[name] ?? AMBIANCES.neon;
     this.ambiance = a;
+    this.ambianceName = name;
+    const k = this.brightness ?? 1;
     const { hemi, key, rimA, rimB } = this.lights;
     hemi.color.set(a.hemi[0]);
     hemi.groundColor.set(a.hemi[1]);
-    hemi.intensity = a.hemi[2];
+    hemi.intensity = a.hemi[2] * k;
     for (const [light, [color, intensity]] of [[key, a.key], [rimA, a.rimA], [rimB, a.rimB]]) {
       light.color.set(color);
-      light.intensity = light.baseIntensity = intensity;
+      light.intensity = light.baseIntensity = intensity * k;
     }
     this.particles.visible = !!a.particles;
     if (a.particles) {
@@ -318,6 +326,16 @@ export class Avatar {
     this.attention = target;
   }
 
+  /** Morphs de réglage du modèle (tenues, formes) : uniquement pour les modèles MMD. */
+  getMorphs() {
+    const rig = this.vrm;
+    return rig?.isPMX ? rig.settingMorphs.map((name) => ({ name, value: rig.getMorph(name) })) : [];
+  }
+
+  setMorph(name, value) {
+    if (this.vrm?.isPMX) this.vrm.setMorph(name, value);
+  }
+
   /** Parties du modèle regroupées par matériau (vêtements, accessoires, cheveux...). */
   getParts() {
     const parts = new Map();
@@ -329,11 +347,17 @@ export class Avatar {
         parts.get(key).push(m);
       }
     });
-    return [...parts].map(([name, mats]) => ({ name, visible: mats.some((m) => m.visible), mats }));
+    return [...parts].map(([name, mats]) => ({ name, visible: mats.some((m) => !m.userData.hiddenByUser), mats }));
   }
 
   setPartVisible(name, visible) {
-    for (const p of this.getParts()) if (p.name === name) p.mats.forEach((m) => (m.visible = visible));
+    for (const p of this.getParts()) {
+      if (p.name !== name) continue;
+      for (const m of p.mats) {
+        m.userData.hiddenByUser = !visible;
+        m.visible = visible;
+      }
+    }
   }
 
   setSpeaking(on) {

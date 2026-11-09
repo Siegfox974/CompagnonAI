@@ -42,6 +42,9 @@ function createAvatar() {
       setMotionRate: noop,
       getParts: () => [],
       setPartVisible: noop,
+      getMorphs: () => [],
+      setMorph: noop,
+      setBrightness: noop,
       load: async () => {
         throw new Error('WebGL indisponible');
       },
@@ -102,6 +105,12 @@ async function loadVrm(url) {
     showMeta(meta);
     modelKey = `wardrobe:${meta.title || 'modele'}`;
     for (const name of load(modelKey, [])) avatar.setPartVisible(name, false);
+    for (const [name, v] of Object.entries(load(`morphs:${modelKey}`, {}))) avatar.setMorph(name, v);
+    // Luminosité mémorisée par type de modèle (les matériaux MMD sont plus sensibles à la lumière).
+    brightnessKey = /\.pmx$/i.test(url.split('?')[0]) ? 'brightness:pmx' : 'brightness:vrm';
+    const k = load(brightnessKey, brightnessKey === 'brightness:pmx' ? 0.6 : 1);
+    $('#brightness').value = k;
+    avatar.setBrightness(k);
     renderWardrobe();
   } catch (err) {
     console.error(err);
@@ -210,6 +219,11 @@ motions.list();
 // ---------- Garde-robe ----------
 /** Traduction des termes fréquents dans les noms de matériaux MMD (japonais). */
 const PART_WORDS = [
+  ['消し', ' (masquer)'], ['消', ' (masquer)'], ['OFF', ' (retirer)'], ['ON', ' (afficher)'], ['爆', ' déchiré'],
+  ['豊乳', 'poitrine +'], ['貧乳', 'poitrine −'], ['尻大', 'fesses +'], ['ウエスト細', 'taille fine'], ['小顔', 'petit visage'],
+  ['衬衣', 'chemise'], ['背心', 'débardeur'], ['奶罩', 'soutien-gorge'], ['短裤', 'short'], ['短袴', 'short'], ['胖次', 'culotte'],
+  ['乳貼', 'cache-tétons'], ['乳贴', 'cache-tétons'], ['高跟', 'talons'], ['鞋', 'chaussures'], ['衣', 'vêtement'],
+  ['体汗', 'sueur'], ['汗', 'sueur'], ['陰毛', 'pilosité'], ['乳首', 'tétons'], ['ボテ', 'ventre rond'],
   ['ネグリジェ', 'nuisette'], ['レース', 'dentelle'], ['裏地', 'doublure'], ['下着', 'sous-vêtements'],
   ['ブラ', 'soutien-gorge'], ['パンツ', 'culotte'], ['ショーツ', 'culotte'], ['ニーソ', 'chaussettes hautes'],
   ['ストッキング', 'bas'], ['タイツ', 'collant'], ['靴下', 'chaussettes'], ['靴', 'chaussures'], ['スカート', 'jupe'],
@@ -245,7 +259,48 @@ function renderWardrobe() {
     label.append(box, fr === part.name ? part.name : `${fr} (${part.name})`);
     list.append(label);
   }
+
+  // Morphs de réglage (modèles MMD) : curseurs 0..1, mémorisés par modèle.
+  // Réglages de tenue en premier, puis les autres (formes, yeux, sourcils...).
+  const OUTFIT_RE = /消|OFF|ON|爆|衣|服|下着|ネグリジェ|bikini|bra|cover|lace|乳貼|乳贴|鞋|靴|裤|袴|罩|pan|skirt|shirt/i;
+  const morphs = avatar.getMorphs().sort((a, b) => OUTFIT_RE.test(b.name) - OUTFIT_RE.test(a.name));
+  $('#morphs-box').hidden = morphs.length === 0;
+  const mlist = $('#morphs-list');
+  mlist.innerHTML = '';
+  for (const m of morphs) {
+    const row = document.createElement('label');
+    row.className = 'morph-row';
+    const name = document.createElement('span');
+    // Traduction affichée seulement si elle est complète (sinon le nom d'origine, plus lisible).
+    const fr = translatePart(m.name);
+    const partial = /[\u3040-\u30ff\u3400-\u9fff]/.test(fr);
+    name.textContent = fr === m.name || partial ? m.name : `${fr} (${m.name})`;
+    name.title = m.name;
+    const range = document.createElement('input');
+    range.type = 'range';
+    range.min = 0;
+    range.max = 1;
+    range.step = 0.05;
+    range.value = m.value;
+    range.addEventListener('input', () => {
+      const v = Number(range.value);
+      avatar.setMorph(m.name, v);
+      const saved = load(`morphs:${modelKey}`, {});
+      if (v > 0) saved[m.name] = v;
+      else delete saved[m.name];
+      save(`morphs:${modelKey}`, saved);
+    });
+    row.append(name, range);
+    mlist.append(row);
+  }
 }
+let brightnessKey = 'brightness:vrm';
+$('#brightness').addEventListener('input', (e) => {
+  const k = Number(e.target.value);
+  avatar.setBrightness(k);
+  save(brightnessKey, k);
+});
+
 $('#wardrobe-toggle').addEventListener('click', () => ($('#wardrobe').hidden = !$('#wardrobe').hidden));
 
 function showMeta(meta) {

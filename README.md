@@ -108,6 +108,11 @@ Points à connaître :
 - Les morphs japonais courants pilotent les émotions : まばたき, 笑い, にこり, ウィンク, びっくり, 困る, 怒り, あいうえお.
   Le rougissement utilise 照れ / 赤面, et les yeux en cœur ハート目 s'affichent à l'orgasme.
 - La garde-robe liste les matériaux avec une traduction (Nuisette, Sous-vêtements, Corps…).
+- **Réglages du modèle** (dans 👗) : les morphs prévus par l'auteur, avec des curseurs mémorisés par modèle.
+  On y trouve les tenues (« 衬衣消 » = masquer la chemise, « ネグリジェ消し » = masquer la nuisette), les formes et les variantes.
+  Quand un modèle superpose plusieurs tenues, c'est là qu'on choisit celle qui est portée.
+- Les morphs de matériau (masquer un vêtement, rougissement) sont appliqués par l'app : la bibliothèque les lit mais ne les applique pas.
+- **Luminosité** (dans ⓘ) : les matériaux MMD réagissent plus fort à la lumière. Elle est réglée à 0,6 par défaut pour les PMX, et mémorisée.
 - Une texture introuvable est signalée dans le chat. La partie concernée garde sa couleur unie au lieu de disparaître.
 - Le format PMX ne contient pas de permissions : elles sont dans le **readme** du modèle.
 

@@ -50,6 +50,7 @@
       <div id="arousal" hidden><span>Excitation</span><div class="bar"><div id="arousal-fill"></div></div></div>
       <div id="vrm-info" hidden>
         <label class="model-pick">Modèle <select id="model-select"></select></label>
+        <label class="model-pick">Luminosité <input id="brightness" type="range" min="0.3" max="1.6" step="0.05" /></label>
         <div id="vrm-meta"></div>
       </div>
       <div id="motions" hidden>
@@ -63,6 +64,10 @@
       <div id="wardrobe" hidden>
         <div class="wardrobe-head">Garde-robe <small>— décoche pour retirer</small></div>
         <div id="wardrobe-list"></div>
+        <div id="morphs-box" hidden>
+          <div class="wardrobe-head">Réglages du modèle <small>— tenues et formes prévues par l'auteur</small></div>
+          <div id="morphs-list"></div>
+        </div>
       </div>
       <div id="log"></div>
       <form id="input">
