@@ -45,6 +45,8 @@ function createAvatar() {
       getMorphs: () => [],
       setMorph: noop,
       setBrightness: noop,
+      expressionReport: () => [],
+      previewExpression: noop,
       load: async () => {
         throw new Error('WebGL indisponible');
       },
@@ -108,11 +110,13 @@ async function loadVrm(url) {
     for (const [name, v] of Object.entries(load(`morphs:${modelKey}`, {}))) avatar.setMorph(name, v);
     // Luminosité mémorisée par type de modèle (les matériaux MMD sont plus sensibles à la lumière).
     // (clé « pmx2 » : l'éclairage MMD a été recalibré, l'ancien réglage à 0,6 ne s'applique plus)
-    brightnessKey = /\.pmx$/i.test(url.split('?')[0]) ? 'brightness:pmx2' : 'brightness:vrm';
-    const k = load(brightnessKey, 1);
+    // 0,85 par défaut pour un PMX : proche du rendu de MMD (lumière 154/255), et laisse voir les reflets.
+    brightnessKey = /\.pmx$/i.test(url.split('?')[0]) ? 'brightness:pmx3' : 'brightness:vrm';
+    const k = load(brightnessKey, brightnessKey === 'brightness:pmx3' ? 0.85 : 1);
     $('#brightness').value = k;
     avatar.setBrightness(k);
     renderWardrobe();
+    renderExprDiag();
   } catch (err) {
     console.error(err);
     addMessage('error', `Chargement du VRM impossible : ${err.message}`);
@@ -295,6 +299,41 @@ function renderWardrobe() {
     mlist.append(row);
   }
 }
+// ---------- Diagnostic des expressions ----------
+const EXPR_FR = {
+  blink: 'clignement', happy: 'sourire', angry: 'colère', sad: 'tristesse', surprised: 'surprise',
+  relaxed: 'détente', aa: 'bouche a', ih: 'bouche i', ou: 'bouche ou', blinkLeft: 'clin d’œil',
+};
+function renderExprDiag() {
+  const box = $('#expr-diag');
+  box.innerHTML = '';
+  const title = document.createElement('div');
+  title.textContent = 'Expressions du modèle :';
+  box.append(title);
+  for (const r of avatar.expressionReport()) {
+    const span = document.createElement('span');
+    span.className = r.found ? 'ok' : 'ko';
+    span.textContent = `${r.found ? '✓' : '✗'} ${EXPR_FR[r.name]}${r.morph ? ` (${r.morph})` : ''}  `;
+    box.append(span);
+  }
+  const stats = avatar.vrm?.morphStats;
+  if (stats && stats.mb > 150) {
+    const w = document.createElement('div');
+    w.className = 'warn';
+    w.textContent =
+      `⚠ ${stats.morphCount} morphs sur ${stats.vertexCount.toLocaleString('fr-FR')} sommets (~${stats.mb} Mo à envoyer à la carte graphique) : ` +
+      'si « Tester les expressions » ne montre rien, le navigateur a probablement refusé cette quantité de données.';
+    box.append(w);
+  }
+}
+$('#expr-test').addEventListener('click', async () => {
+  for (const r of avatar.expressionReport().filter((r) => r.found)) {
+    addMessage('error', `Test : ${EXPR_FR[r.name]}${r.morph ? ` (${r.morph})` : ''}`);
+    avatar.previewExpression(r.name, 1300);
+    await new Promise((res) => setTimeout(res, 1500));
+  }
+});
+
 let brightnessKey = 'brightness:vrm';
 $('#brightness').addEventListener('input', (e) => {
   const k = Number(e.target.value);

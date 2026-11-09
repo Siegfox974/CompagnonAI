@@ -113,6 +113,15 @@ class PmxRig {
       },
     };
     this.lookAt = null;
+    /** Nom du morph MMD utilisé pour une expression (diagnostic). */
+    this.morphFor = (name) => {
+      const i = indexOf(name);
+      return i === undefined ? null : Object.keys(dict).find((k) => dict[k] === i) ?? null;
+    };
+    // Taille de la texture de morphs envoyée à la carte graphique (sommets × morphs × 16 octets).
+    const vertexCount = mesh.geometry.attributes.position.count;
+    const morphCount = mesh.geometry.morphAttributes.position?.length ?? 0;
+    this.morphStats = { vertexCount, morphCount, mb: Math.round((vertexCount * morphCount * 16) / 1e6) };
 
     // Morphs de réglage (tenues, formes...) : tous ceux qui ne servent pas aux expressions.
     const exprNames = new Set(Object.values(EXPRESSIONS).flat());

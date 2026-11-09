@@ -345,6 +345,18 @@ export class Avatar {
     this.attention = target;
   }
 
+  /** Expressions testées par le diagnostic, et morph trouvé pour chacune (ou null). */
+  expressionReport() {
+    const em = this.vrm?.expressionManager;
+    const names = ['blink', 'happy', 'angry', 'sad', 'surprised', 'relaxed', 'aa', 'ih', 'ou', 'blinkLeft'];
+    return names.map((name) => ({ name, found: !!em?.getExpression(name), morph: this.vrm?.morphFor?.(name) ?? null }));
+  }
+
+  /** Force une expression à fond pendant `ms` millisecondes (diagnostic). */
+  previewExpression(name, ms = 1200) {
+    this.forcedExpr = { name, until: performance.now() + ms };
+  }
+
   /** Morphs de réglage du modèle (tenues, formes) : uniquement pour les modèles MMD. */
   getMorphs() {
     const rig = this.vrm;
@@ -426,6 +438,11 @@ export class Avatar {
     this.lids = damp(this.lids, Math.max(mood.lids ?? 0, intensity * 0.45, C * 0.9), 6);
     this.blush = damp(this.blush, Math.max(mood.blush ?? 0, act.w), 2);
     for (const n of this.blushNames) set(n, this.blush);
+    // Diagnostic : une expression forcée à fond, par-dessus le reste.
+    if (this.forcedExpr) {
+      if (performance.now() < this.forcedExpr.until) set(this.forcedExpr.name, 1);
+      else this.forcedExpr = null;
+    }
     // Yeux en cœur à l'orgasme (si le modèle en a : morph ハート目 des modèles MMD).
     set('heartEyes', C);
 

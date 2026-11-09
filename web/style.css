@@ -79,6 +79,10 @@ body.site-mode.avatar-hidden #scene { visibility: hidden; }
 .morph-row { display: flex; gap: 8px; align-items: center; padding: 2px 0; }
 .morph-row span { flex: 0 0 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .model-pick select { flex: 1; min-width: 0; background: #0000004d; color: var(--text); border: 1px solid #ffffff22; border-radius: 6px; padding: 3px 6px; font: inherit; }
+#expr-diag { margin: 6px 0; line-height: 1.6; }
+#expr-diag .ok { color: #8fd6a8; }
+#expr-diag .ko { color: #ff8a8a; }
+#expr-test { margin-bottom: 4px; }
 #vrm-info .warn, .watching.forbidden { color: #ffb36b; }
 .watching { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
