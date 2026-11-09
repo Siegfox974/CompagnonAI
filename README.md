@@ -119,6 +119,17 @@ Le rougissement fonctionne si le modèle a une expression « blush ». Elle te r
 
 Bouton 🎨 : **Néon** (rose et violet), **Boudoir** (lumière chaude de bougie qui vacille) ou **Studio** (neutre).
 
+## Réglages conseillés pour une RTX 3060 12 Go
+
+Un modèle de 12B en Q4 (environ 7 Go) tient entièrement dans la carte, avec la place pour le contexte et l'affichage 3D :
+```bat
+setx OLLAMA_CONTEXT_LENGTH 8192
+setx OLLAMA_FLASH_ATTENTION 1
+setx OLLAMA_KV_CACHE_TYPE q8_0
+```
+Redémarrer ensuite Ollama. Sans `OLLAMA_CONTEXT_LENGTH`, Ollama peut couper la conversation : le prompt du personnage
+et l'historique dépassent la taille par défaut. Elle « oublie » alors ses consignes et répond plus lentement.
+
 ## Réponses lentes ?
 
 La vitesse dépend du LLM et de la carte graphique. `ollama ps` doit afficher **100% GPU**. Sinon :

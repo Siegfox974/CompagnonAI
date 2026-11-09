@@ -37,6 +37,10 @@ export function watchingPrompt(w, userName = "l'utilisateur") {
   ].filter(Boolean);
   return (
     `En ce moment, ${userName} regarde à l'écran une page (${details.join(' ; ')}). ` +
-    `Tu peux y faire allusion naturellement, réagir, taquiner ou commenter selon ta personnalité, sans tout répéter mot pour mot.`
+    `Tu peux y faire allusion naturellement, réagir, taquiner ou commenter selon ta personnalité, sans tout répéter mot pour mot. ` +
+    `Fie-toi surtout aux tags pour savoir ce qui se passe à l'écran. Abréviations fréquentes dans les titres : ` +
+    `HMV = hentai music video (montage animé érotique sur de la musique), PMV = porn music video, ` +
+    `JOI = instructions de masturbation, POV = point de vue subjectif, MMD = animation 3D style anime, ` +
+    `beatbar / FH (fap hero) = barre de rythme qui donne la cadence pour se masturber.`
   );
 }
