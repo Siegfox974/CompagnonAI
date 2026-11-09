@@ -73,6 +73,8 @@ body.site-mode.avatar-hidden #scene { visibility: hidden; }
 #arousal.climax #arousal-fill { animation: pulse 0.4s ease-in-out infinite alternate; }
 @keyframes pulse { to { filter: brightness(1.8); } }
 #vrm-info, .watching { padding: 8px 14px; font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--line); }
+.model-pick { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.model-pick select { flex: 1; min-width: 0; background: #0000004d; color: var(--text); border: 1px solid #ffffff22; border-radius: 6px; padding: 3px 6px; font: inherit; }
 #vrm-info .warn, .watching.forbidden { color: #ffb36b; }
 .watching { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 

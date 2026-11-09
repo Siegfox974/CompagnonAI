@@ -25,6 +25,7 @@
     <div id="drop-hint" class="hint">
       Glisse un fichier <b>.vrm</b> ici<br />
       <small>(ou une animation <b>.vmd</b>)</small>
+      <small>Modèle MMD (.pmx) : copie son dossier complet dans <code>models/</code>, puis choisis-le dans ⓘ</small>
       <small>ou place-le dans <code>models/default.vrm</code></small>
       <label class="btn">Choisir un fichier<input id="file" type="file" accept=".vrm" hidden /></label>
     </div>
@@ -47,7 +48,10 @@
       </nav>
       <div id="watching" class="watching" hidden></div>
       <div id="arousal" hidden><span>Excitation</span><div class="bar"><div id="arousal-fill"></div></div></div>
-      <div id="vrm-info" hidden></div>
+      <div id="vrm-info" hidden>
+        <label class="model-pick">Modèle <select id="model-select"></select></label>
+        <div id="vrm-meta"></div>
+      </div>
       <div id="motions" hidden>
         <div class="wardrobe-head">Animation du moment intime 🔥 <small>— glisse un .vmd pour en ajouter</small></div>
         <div id="motions-list"></div>

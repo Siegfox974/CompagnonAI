@@ -109,6 +109,28 @@ async function loadVrm(url) {
   }
 }
 
+avatar.onMissingTextures = (files) =>
+  addMessage(
+    'error',
+    `Textures introuvables (${files.length}) : ${files.join(', ')}. Vérifie que le dossier du modèle a été copié en entier (avec son sous-dossier de textures).`,
+  );
+
+// ---------- Choix du modèle (dossier models/) ----------
+const modelSelect = $('#model-select');
+const modelUrl = (rel) => `/models/${rel.split('/').map(encodeURIComponent).join('/')}`;
+async function listModels() {
+  const names = await (await fetch('/api/models')).json();
+  modelSelect.innerHTML = '';
+  modelSelect.append(new Option('— choisir —', ''));
+  for (const n of names) modelSelect.append(new Option(n, n));
+  return names;
+}
+modelSelect.addEventListener('change', () => {
+  if (!modelSelect.value) return;
+  save('model', modelSelect.value);
+  loadVrm(modelUrl(modelSelect.value));
+});
+
 // ---------- Animations .vmd ----------
 /**
  * Fichiers du dossier motions/. L'animation choisie remplace l'animation calculée pendant le moment 🔥
@@ -138,7 +160,9 @@ const motions = {
     if (!this.cache.has(name)) {
       const res = await fetch(`/motions/${encodeURIComponent(name)}`);
       if (!res.ok) throw new Error(`Animation introuvable : ${name}`);
-      this.cache.set(name, parseVMD(await res.arrayBuffer()));
+      const clip = parseVMD(await res.arrayBuffer());
+      clip.url = `/motions/${encodeURIComponent(name)}`; // lecture native sur les modèles .pmx
+      this.cache.set(name, clip);
     }
     return this.cache.get(name);
   },
@@ -184,6 +208,24 @@ $('#motion-stop').addEventListener('click', () => motions.stop());
 motions.list();
 
 // ---------- Garde-robe ----------
+/** Traduction des termes fréquents dans les noms de matériaux MMD (japonais). */
+const PART_WORDS = [
+  ['ネグリジェ', 'nuisette'], ['レース', 'dentelle'], ['裏地', 'doublure'], ['下着', 'sous-vêtements'],
+  ['ブラ', 'soutien-gorge'], ['パンツ', 'culotte'], ['ショーツ', 'culotte'], ['ニーソ', 'chaussettes hautes'],
+  ['ストッキング', 'bas'], ['タイツ', 'collant'], ['靴下', 'chaussettes'], ['靴', 'chaussures'], ['スカート', 'jupe'],
+  ['ドレス', 'robe'], ['ワンピース', 'robe'], ['シャツ', 'chemise'], ['上着', 'veste'], ['服', 'vêtement'],
+  ['手袋', 'gants'], ['リボン', 'ruban'], ['エプロン', 'tablier'], ['水着', 'maillot'], ['身体', 'corps'], ['体', 'corps'],
+  ['肌', 'peau'], ['顔', 'visage'], ['白目', 'blanc des yeux'], ['目', 'yeux'], ['眉', 'sourcils'], ['まぶた', 'paupières'],
+  ['ハイライト', 'reflets'], ['涙', 'larmes'], ['鼻線', 'nez'], ['ハート', 'cœur'], ['髪', 'cheveux'], ['猫耳', 'oreilles de chat'],
+  ['耳毛', 'poils d’oreilles'], ['耳', 'oreilles'], ['しっぽ', 'queue'], ['尻尾', 'queue'], ['赤面', 'rougeur'], ['照れ', 'rougissement'],
+];
+function translatePart(name) {
+  let out = name;
+  for (const [ja, fr] of PART_WORDS) out = out.replaceAll(ja, ` ${fr} `);
+  out = out.replace(/[・_]/g, ' ').replace(/\s+/g, ' ').trim();
+  return out ? out[0].toUpperCase() + out.slice(1) : name;
+}
+
 let modelKey = 'wardrobe:modele';
 function renderWardrobe() {
   const list = $('#wardrobe-list');
@@ -199,27 +241,29 @@ function renderWardrobe() {
       box.checked ? hidden.delete(part.name) : hidden.add(part.name);
       save(modelKey, [...hidden]);
     });
-    label.append(box, part.name);
+    const fr = translatePart(part.name);
+    label.append(box, fr === part.name ? part.name : `${fr} (${part.name})`);
     list.append(label);
   }
 }
 $('#wardrobe-toggle').addEventListener('click', () => ($('#wardrobe').hidden = !$('#wardrobe').hidden));
 
 function showMeta(meta) {
-  vrmInfo.innerHTML = '';
+  const box = $('#vrm-meta');
+  box.innerHTML = '';
   const line = (label, value) => {
     const p = document.createElement('div');
     p.textContent = `${label} : ${value || '—'}`;
-    vrmInfo.append(p);
+    box.append(p);
   };
-  line('Modèle', `${meta.title || 'sans titre'} (VRM ${meta.version})`);
+  line('Modèle', `${meta.title || 'sans titre'} (${/^\d/.test(meta.version) ? `VRM ${meta.version}` : meta.version})`);
   line('Auteur', meta.author);
   line('Licence', meta.license);
-  if (!meta.sexualUse) {
+  if (meta.sexualUse === false) {
     const w = document.createElement('div');
     w.className = 'warn';
     w.textContent = "⚠ L'auteur n'autorise pas l'usage sexuel de ce modèle dans ses métadonnées.";
-    vrmInfo.append(w);
+    box.append(w);
     vrmInfo.hidden = false;
   }
 }
@@ -240,6 +284,12 @@ addEventListener('drop', (e) => {
   const f = files.find((f) => f.name.toLowerCase().endsWith('.vrm'));
   if (f) loadVrm(URL.createObjectURL(f));
   for (const m of files.filter((f) => f.name.toLowerCase().endsWith('.vmd'))) motions.upload(m);
+  if (files.some((f) => f.name.toLowerCase().endsWith('.pmx'))) {
+    addMessage(
+      'error',
+      'Un modèle .pmx a besoin de ses textures : copie son dossier complet dans le dossier models/ du projet, puis choisis-le dans le menu ⓘ → Modèle.',
+    );
+  }
 });
 
 // ---------- Site en fond (app desktop) ----------
@@ -694,6 +744,12 @@ charSelect.addEventListener('change', async () => {
   }
   await showCharacter(await (await fetch('/api/character')).json());
 
-  const def = await fetch('/models/default.vrm', { method: 'HEAD' });
-  if (def.ok) loadVrm('/models/default.vrm');
+  // Modèle : celui choisi la dernière fois, sinon models/default.vrm, sinon le premier trouvé.
+  const models = await listModels();
+  const saved = load('model', '');
+  const pick = models.includes(saved) ? saved : models.includes('default.vrm') ? 'default.vrm' : models[0];
+  if (pick) {
+    modelSelect.value = pick;
+    loadVrm(modelUrl(pick));
+  }
 })();

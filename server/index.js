@@ -84,6 +84,22 @@ app.use(express.json({ limit: '1mb' }));
 app.use('/models', express.static(config.dirs.models), (_req, res) => res.sendStatus(404));
 app.use('/motions', express.static(config.dirs.motions), (_req, res) => res.sendStatus(404));
 
+// ---------- Modèles (dossier models/, sous-dossiers compris : un .pmx garde ses textures à côté) ----------
+app.get('/api/models', (_req, res) => {
+  const found = [];
+  const walk = (dir, rel, depth) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.name.startsWith('.')) continue;
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory() && depth < 4) walk(path.join(dir, e.name), r, depth + 1);
+      else if (/\.(vrm|pmx)$/i.test(e.name)) found.push(r);
+    }
+  };
+  fs.mkdirSync(config.dirs.models, { recursive: true });
+  walk(config.dirs.models, '', 0);
+  res.json(found.sort());
+});
+
 // ---------- Animations .vmd (dossier motions/) ----------
 app.get('/api/motions', (_req, res) => {
   fs.mkdirSync(config.dirs.motions, { recursive: true });

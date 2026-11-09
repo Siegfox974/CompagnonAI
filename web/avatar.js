@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 import { MotionPlayer } from './retarget.js';
+import { loadPMX } from './pmx.js';
 
 const BASE_EXPRESSIONS = ['happy', 'angry', 'sad', 'relaxed', 'surprised'];
 const VISEMES = ['aa', 'ih', 'ou', 'ee', 'oh'];
@@ -177,29 +178,42 @@ export class Avatar {
   }
 
   /** Charge un VRM depuis une URL (ou un blob URL). Renvoie ses métadonnées. */
+  /** Charge un modèle VRM ou MMD (.pmx, depuis son dossier pour trouver ses textures). */
   async load(url) {
-    const gltf = await this.loader.loadAsync(url);
-    const vrm = gltf.userData.vrm;
-    if (!vrm) throw new Error("Ce fichier n'est pas un modèle VRM valide.");
+    const isPMX = /\.pmx$/i.test(url.split('?')[0]);
+    let vrm;
+    if (isPMX) {
+      vrm = await loadPMX(url, (files) => this.onMissingTextures?.(files));
+    } else {
+      const gltf = await this.loader.loadAsync(url);
+      vrm = gltf.userData.vrm;
+      if (!vrm) throw new Error("Ce fichier n'est pas un modèle VRM valide.");
+      VRMUtils.removeUnnecessaryVertices(gltf.scene);
+      VRMUtils.combineSkeletons(gltf.scene);
+      VRMUtils.rotateVRM0(vrm);
+    }
 
     if (this.vrm) {
       this.scene.remove(this.vrm.scene);
-      VRMUtils.deepDispose(this.vrm.scene);
+      if (this.vrm.isPMX) this.vrm.dispose();
+      else VRMUtils.deepDispose(this.vrm.scene);
     }
-    VRMUtils.removeUnnecessaryVertices(gltf.scene);
-    VRMUtils.combineSkeletons(gltf.scene);
-    VRMUtils.rotateVRM0(vrm);
     vrm.scene.traverse((o) => (o.frustumCulled = false));
 
     this.vrm = vrm;
     // VRM 0.x : squelette retourné, les rotations autour de X et Z sont inversées.
     this.flip = vrm.meta?.metaVersion === '0' ? -1 : 1;
+    this.armRest = measureArmRest(vrm);
     this.blushNames = (vrm.expressionManager?.expressions ?? [])
       .map((e) => e.expressionName)
       .filter((n) => BLUSH_RE.test(n));
     this.scene.add(vrm.scene);
     this.hipsRest = vrm.humanoid.getNormalizedBoneNode('hips').position.clone();
-    this.motion.player = this.motion.clip ? new MotionPlayer(vrm, this.motion.clip, this.flip, this.hipsRest) : null;
+    // Position de repos du bassin dans la scène (mètres), pour le suivi caméra (un PMX est mis à l'échelle).
+    vrm.scene.updateMatrixWorld(true);
+    this.hipsRestWorld = vrm.humanoid.getNormalizedBoneNode('hips').getWorldPosition(new THREE.Vector3());
+    this.motion.player = this.motion.clip && !vrm.isPMX ? new MotionPlayer(vrm, this.motion.clip, this.flip, this.hipsRest) : null;
+    if (vrm.isPMX && this.motion.on && this.motion.clip?.url) vrm.playVMD(this.motion.clip.url).catch(() => {});
     if (vrm.lookAt) vrm.lookAt.target = this.lookTarget;
     this.restPose();
     this.frame();
@@ -212,8 +226,10 @@ export class Avatar {
     // En VRM 0.x le squelette regarde vers -Z (retourné ensuite par rotateVRM0) :
     // le sens des rotations est donc inversé par rapport au VRM 1.0.
     const s = this.flip;
-    bone('leftUpperArm')?.rotation.set(0, 0, -1.2 * s);
-    bone('rightUpperArm')?.rotation.set(0, 0, 1.2 * s);
+    // Angle à ajouter depuis la pose de repos du modèle (T pour un VRM, A pour un modèle MMD).
+    const { left = 0, right = 0 } = this.armRest ?? {};
+    bone('leftUpperArm')?.rotation.set(0, 0, -(1.2 - left) * s);
+    bone('rightUpperArm')?.rotation.set(0, 0, (1.2 - right) * s);
     bone('leftLowerArm')?.rotation.set(0, -0.25 * s, 0);
     bone('rightLowerArm')?.rotation.set(0, 0.25 * s, 0);
     this.restQ = Object.fromEntries(
@@ -271,6 +287,13 @@ export class Avatar {
     const m = this.motion;
     if (!clip) {
       m.on = false;
+      return;
+    }
+    if (this.vrm?.isPMX) {
+      // Modèle MMD : lecture native du fichier (IK, liaisons et morphs MMD compris).
+      m.clip = clip;
+      m.on = true;
+      if (clip.url) this.vrm.playVMD(clip.url).catch((err) => console.error(err));
       return;
     }
     if (clip !== m.clip) {
@@ -360,6 +383,8 @@ export class Avatar {
     this.lids = damp(this.lids, Math.max(mood.lids ?? 0, intensity * 0.45, C * 0.9), 6);
     this.blush = damp(this.blush, Math.max(mood.blush ?? 0, act.w), 2);
     for (const n of this.blushNames) set(n, this.blush);
+    // Yeux en cœur à l'orgasme (si le modèle en a : morph ハート目 des modèles MMD).
+    set('heartEyes', C);
 
     // Posture : chaque paramètre glisse vers celui de l'humeur.
     for (const k of Object.keys(POSE_DEFAULTS)) {
@@ -460,8 +485,18 @@ export class Avatar {
     this.handsActive = handsOn;
 
     // Animation .vmd par-dessus la posture calculée.
-    motion.w = damp(motion.w, motion.on && motion.player ? 1 : 0, 3);
-    if (motion.player && motion.w > 0.001) {
+    const pmx = vrm.isPMX ? vrm : null;
+    motion.w = damp(motion.w, motion.on && (motion.player || pmx?.action) ? 1 : 0, 3);
+    if (pmx) {
+      if (pmx.action) {
+        pmx.action.setEffectiveWeight(motion.w);
+        pmx.mixer.timeScale = motion.rate * (1 + C);
+        if (!motion.on && motion.w <= 0.001) {
+          pmx.stopVMD();
+          this.restPose();
+        }
+      }
+    } else if (motion.player && motion.w > 0.001) {
       motion.t += dt * motion.rate * (1 + C);
       const morphs = motion.player.apply(motion.t, motion.w);
       for (const [name, v] of Object.entries(morphs)) set(name, Math.max(em?.getValue(name) ?? 0, v * motion.w));
@@ -554,8 +589,8 @@ export class Avatar {
     const w = this.motion.w;
     const hips = this.vrm.humanoid.getNormalizedBoneNode('hips').getWorldPosition(new THREE.Vector3());
     const goal = this.baseTarget.clone();
-    goal.y += (hips.y - this.hipsRest.y) * w;
-    goal.z += hips.z * w;
+    goal.y += (hips.y - this.hipsRestWorld.y) * w;
+    goal.z += (hips.z - this.hipsRestWorld.z) * w;
     const delta = goal.sub(this.controls.target).multiplyScalar(1 - Math.exp(-4 * dt));
     this.controls.target.add(delta);
     this.camera.position.add(delta);
@@ -615,6 +650,24 @@ function makeParticles(count = 140) {
   return points;
 }
 
+/**
+ * Inclinaison des bras au repos (radians sous l'horizontale) : 0 pour un VRM en T, ~0.6 pour un MMD en A.
+ * Mesurée avant toute animation, à partir de la position épaule → coude.
+ */
+function measureArmRest(vrm) {
+  const out = {};
+  vrm.scene.updateMatrixWorld(true);
+  for (const side of ['left', 'right']) {
+    const up = vrm.humanoid.getNormalizedBoneNode(`${side}UpperArm`);
+    const lo = vrm.humanoid.getNormalizedBoneNode(`${side}LowerArm`);
+    if (!up || !lo) continue;
+    const a = up.getWorldPosition(new THREE.Vector3());
+    const b = lo.getWorldPosition(new THREE.Vector3());
+    out[side] = Math.max(0, Math.atan2(a.y - b.y, Math.abs(b.x - a.x)));
+  }
+  return out;
+}
+
 /** Tourne un os pour que le point `from` (porté par l'os, autour de `pivot`) vise `to`. */
 function rotateBoneToward(bone, from, to, pivot) {
   const q = new THREE.Quaternion().setFromUnitVectors(
@@ -638,6 +691,10 @@ function partName(raw = '') {
 /** Métadonnées et permissions d'usage déclarées par l'auteur du modèle (VRM 0.x et 1.0). */
 function readMeta(vrm) {
   const m = vrm.meta ?? {};
+  if (m.metaVersion === 'pmx') {
+    // Le format PMX ne contient pas de permissions : elles sont dans le readme fourni avec le modèle.
+    return { version: 'PMX (MMD)', title: m.name, author: '', license: 'voir le readme du modèle', sexualUse: null };
+  }
   if (m.metaVersion === '1') {
     return {
       version: '1.0',

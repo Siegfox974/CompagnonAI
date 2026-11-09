@@ -99,7 +99,19 @@ Le choix est mémorisé par modèle.
 Pour un vrai résultat, il faut un modèle conçu pour (corps complet, vêtements séparés).
 
 ### Utiliser un modèle MMD (.pmx)
-Le format PMX n'est pas lu directement : three.js a retiré son lecteur MMD. On le convertit une fois en VRM avec Blender (gratuit) :
+Les modèles `.pmx` se chargent directement, avec leurs matériaux toon d'origine, l'IK MMD et la physique des cheveux et de la poitrine (`@moeru/three-mmd`) :
+1. Copier **le dossier complet du modèle**, avec son sous-dossier de textures, dans `models/` (par exemple `models/eleanor/…`).
+2. Dans l'app : ⓘ → **Modèle**, puis le choisir. Le choix est mémorisé.
+
+Points à connaître :
+- Les animations `.vmd` se jouent **nativement** sur un PMX, sans conversion : rendu fidèle à MMD.
+- Les morphs japonais courants pilotent les émotions : まばたき, 笑い, にこり, ウィンク, びっくり, 困る, 怒り, あいうえお.
+  Le rougissement utilise 照れ / 赤面, et les yeux en cœur ハート目 s'affichent à l'orgasme.
+- La garde-robe liste les matériaux avec une traduction (Nuisette, Sous-vêtements, Corps…).
+- Une texture introuvable est signalée dans le chat. La partie concernée garde sa couleur unie au lieu de disparaître.
+- Le format PMX ne contient pas de permissions : elles sont dans le **readme** du modèle.
+
+Alternative : convertir le PMX en VRM avec Blender (gratuit) :
 1. Installer **[MMD Tools](https://extensions.blender.org/add-ons/mmd-tools/)** et le **[VRM Add-on for Blender](https://vrm-addon-for-blender.info/)**.
 2. Importer le `.pmx` (File → Import → MikuMikuDance Model).
 3. Définir les os humanoïdes dans l'onglet VRM (assignation automatique proposée), puis exporter en `.vrm`.

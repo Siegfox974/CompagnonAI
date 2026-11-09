@@ -55,6 +55,12 @@
   (repère, pose A → T par conjugaison, IK des jambes, morphs) ; fondu avec la posture calculée et caméra qui suit le bassin.
 - `GET/POST /api/motions` ; fichiers servis depuis `motions/`.
 
+### Fait : modèles MMD (.pmx)
+- `web/pmx.js` : chargement via `@moeru/three-mmd` (et physique `three-mmd-physics-springbone`), puis adaptateur qui expose
+  la même interface qu'un VRM : os humanoïdes ← os MMD standards, expressions ← morphs japonais, `update()` avec IK et liaisons.
+- L'angle de repos des bras est mesuré (T pour un VRM, A pour un PMX) ; les `.vmd` sont joués nativement par un `AnimationMixer`.
+- `GET /api/models` liste les `.vrm` et `.pmx` de `models/` (sous-dossiers compris).
+
 ### Pistes suivantes
 - Le personnage pilote sa tenue (balise `[outfit:…]`), avec des tenues préparées par modèle.
 - Animations `.vrma` (danse, poses, gestes des mains).
