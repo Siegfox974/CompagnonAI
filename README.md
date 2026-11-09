@@ -30,6 +30,20 @@ Pour qu'il se charge automatiquement, le placer dans `models/default.vrm`.
 
 Version optimisée : `npm run build`, puis `npm start`.
 
+## Windows : installation et mises à jour
+
+Installer une fois [Git](https://git-scm.com/download/win) et [Node.js LTS](https://nodejs.org), puis :
+
+```bat
+cd /d D:\
+git clone -b claude/practical-hamilton-vv7br4 https://github.com/siegfox974/CompagnonAI.git
+```
+
+- **Lancer** : double-clic sur `lancer.bat`.
+- **Mettre à jour** : double-clic sur `mettre-a-jour.bat`. Seuls les fichiers modifiés sont téléchargés. Les modèles Ollama, `.env`, `models/` et `data/` ne sont pas touchés.
+
+Pour stocker les modèles Ollama hors du SSD : `setx OLLAMA_MODELS "D:\Ollama\models"`, puis redémarrer Ollama.
+
 ## Personnage
 
 Les fiches sont dans `characters/<id>.json` et se choisissent avec `CHARACTER=<id>` dans `.env`.

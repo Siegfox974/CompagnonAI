@@ -7,7 +7,7 @@ const num = (v, d) => (v === undefined || v === '' ? d : Number(v));
 
 export const config = {
   port: num(process.env.PORT, 3000),
-  production: process.env.NODE_ENV === 'production',
+  production: process.env.NODE_ENV === 'production' || process.argv.includes('--production'),
   llm: {
     baseUrl: (process.env.LLM_BASE_URL || 'http://localhost:11434/v1').replace(/\/$/, ''),
     model: process.env.LLM_MODEL || 'mistral-nemo',
