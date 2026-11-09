@@ -67,6 +67,23 @@ Elle se caresse en regardant avec toi. Les mains sont placées par cinématique 
 
 Uniquement pour les personnages avec `"nsfw": true`.
 
+## Animations MMD (.vmd) 🎞
+Les animations MikuMikuDance se jouent sur le modèle VRM.
+- **Ajouter** : glisser un fichier `.vmd` dans la fenêtre. Il est copié dans `motions/`, qui est exclu de Git.
+- **Utiliser** : dans le panneau 🎞, choisir l'animation du moment 🔥. Elle remplace alors l'animation calculée,
+  accélère avec l'excitation et ralentit quand la vidéo est en pause. « Jouer en boucle » la lance à tout moment.
+- **Conversion** :
+  - os japonais → os VRM, repère MMD (main gauche) → three.js ;
+  - bras au repos en A (MMD) → en T (VRM), avec un angle de 35° ;
+  - jambes : la position des pieds (IK) est recalculée ;
+  - expressions courantes (clignement, voyelles, sourire) reprises ;
+  - l'os racine (placement dans la scène d'origine) est ignoré pour qu'elle reste face à toi.
+- **La caméra suit le bassin** pendant l'animation : accroupie ou allongée, elle reste dans le cadre.
+- **Limites** :
+  - pas de sol ni de décor : une pose assise donne l'impression qu'elle flotte ;
+  - les expressions propres au modèle d'origine sont ignorées ;
+  - si les proportions sont très différentes, les mains peuvent tomber à côté.
+
 ## Personnages
 Le menu en haut du panneau permet de changer de personnage à tout moment. Chacun garde sa propre mémoire.
 - **Luna** (27 ans) : petite amie complice et joueuse.

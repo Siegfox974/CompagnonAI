@@ -52,6 +52,13 @@ body.site-mode.avatar-hidden #scene { visibility: hidden; }
 .pill { font-size: 12px; padding: 2px 8px; border-radius: 99px; background: #ffffff14; color: var(--muted); }
 #char-select { background: transparent; color: var(--text); border: 0; font: inherit; font-weight: 600; cursor: pointer; max-width: 150px; }
 #char-select option { background: #1b1020; color: var(--text); }
+#motions { padding: 8px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
+#motions[hidden] { display: none; }
+#motions label { display: flex; gap: 8px; align-items: center; padding: 2px 0; cursor: pointer; word-break: break-all; }
+#motions input { accent-color: var(--accent); }
+.motions-actions { display: flex; gap: 8px; margin-top: 8px; }
+.btn.small { padding: 5px 10px; font-size: 13px; }
+.btn.ghost { background: #ffffff14; }
 #wardrobe { max-height: 40%; overflow-y: auto; padding: 8px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
 #wardrobe[hidden] { display: none; }
 .wardrobe-head { color: var(--muted); margin-bottom: 6px; }

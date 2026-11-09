@@ -82,6 +82,27 @@ const EVENTS = {
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 app.use('/models', express.static(config.dirs.models), (_req, res) => res.sendStatus(404));
+app.use('/motions', express.static(config.dirs.motions), (_req, res) => res.sendStatus(404));
+
+// ---------- Animations .vmd (dossier motions/) ----------
+app.get('/api/motions', (_req, res) => {
+  fs.mkdirSync(config.dirs.motions, { recursive: true });
+  res.json(fs.readdirSync(config.dirs.motions).filter((f) => f.toLowerCase().endsWith('.vmd')).sort());
+});
+
+app.post('/api/motions', express.raw({ type: 'application/octet-stream', limit: '50mb' }), (req, res) => {
+  const raw = path.basename(decodeURIComponent(String(req.get('X-Filename') ?? '')));
+  const name = raw.replace(/[^\p{L}\p{N}._ ()-]/gu, '_');
+  if (!name.toLowerCase().endsWith('.vmd') || !Buffer.isBuffer(req.body) || req.body.length < 54) {
+    return res.status(400).json({ error: 'Fichier .vmd invalide' });
+  }
+  if (!req.body.subarray(0, 20).toString('latin1').startsWith('Vocaloid Motion Data')) {
+    return res.status(400).json({ error: "Ce fichier n'est pas une animation MMD (.vmd)" });
+  }
+  fs.mkdirSync(config.dirs.motions, { recursive: true });
+  fs.writeFileSync(path.join(config.dirs.motions, name), req.body);
+  res.json({ name });
+});
 
 app.get('/api/character', (_req, res) => res.json(publicCharacter()));
 

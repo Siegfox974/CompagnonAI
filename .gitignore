@@ -5,3 +5,5 @@ data/*
 !data/.gitkeep
 models/*
 !models/.gitkeep
+motions/*
+!motions/.gitkeep

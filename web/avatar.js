@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+import { MotionPlayer } from './retarget.js';
 
 const BASE_EXPRESSIONS = ['happy', 'angry', 'sad', 'relaxed', 'surprised'];
 const VISEMES = ['aa', 'ih', 'ou', 'ee', 'oh'];
@@ -108,6 +109,8 @@ export class Avatar {
     this.attention = 'user';
     // Moment intime : on (elle se caresse), w (fondu 0→1), arousal (0→1), phase du rythme, orgasme.
     this.act = { on: false, w: 0, arousal: 0, phase: 0, climaxT: -1, videoPlaying: true };
+    // Animation .vmd en cours : lecteur, temps, vitesse, fondu.
+    this.motion = { player: null, clip: null, on: false, t: 0, rate: 1, w: 0 };
     this.glanceUntil = 0;
     this.nextGlance = 5;
     this.speaking = false;
@@ -195,6 +198,8 @@ export class Avatar {
       .map((e) => e.expressionName)
       .filter((n) => BLUSH_RE.test(n));
     this.scene.add(vrm.scene);
+    this.hipsRest = vrm.humanoid.getNormalizedBoneNode('hips').position.clone();
+    this.motion.player = this.motion.clip ? new MotionPlayer(vrm, this.motion.clip, this.flip, this.hipsRest) : null;
     if (vrm.lookAt) vrm.lookAt.target = this.lookTarget;
     this.restPose();
     this.frame();
@@ -229,6 +234,7 @@ export class Avatar {
     this.controls.target.set(0, wide ? y - 0.38 : y - 0.12, 0);
     this.camera.position.set(0, wide ? y - 0.32 : y - 0.1, wide ? 2.8 : 1.9);
     this.controls.update();
+    this.baseTarget = this.controls.target.clone();
   }
 
   setEmotion(name) {
@@ -258,6 +264,26 @@ export class Avatar {
   /** La vidéo est-elle en lecture ? (en pause, le rythme ralentit) */
   setVideoPlaying(on) {
     this.act.videoPlaying = on;
+  }
+
+  /** Joue une animation .vmd en boucle (clip de parseVMD), ou l'arrête en fondu (null). */
+  setMotion(clip) {
+    const m = this.motion;
+    if (!clip) {
+      m.on = false;
+      return;
+    }
+    if (clip !== m.clip) {
+      m.player?.reset();
+      m.clip = clip;
+      m.t = 0;
+      m.player = this.vrm ? new MotionPlayer(this.vrm, clip, this.flip, this.hipsRest) : null;
+    }
+    m.on = true;
+  }
+
+  setMotionRate(rate) {
+    this.motion.rate = rate;
   }
 
   /** Orgasme : environ 4 s d'intensité maximale, tremblements, puis relâchement. */
@@ -297,7 +323,10 @@ export class Avatar {
     this.controls.update();
     this.animateAmbiance(t, dt);
 
-    if (this.vrm) this.animateBody(t, dt);
+    if (this.vrm) {
+      this.animateBody(t, dt);
+      this.followBody(dt);
+    }
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -423,9 +452,24 @@ export class Avatar {
       f * (0.07 + p.tilt + g.roll + Math.sin(t * 0.5) * 0.025),
     );
 
-    if (act.w > 0.001) this.animateHands(stroke, intensity, C);
+    // Mains : animation calculée, sauf si une animation .vmd a pris le relais.
+    const motion = this.motion;
+    const handsOn = act.w > 0.001 && !motion.on && motion.w < 0.001;
+    if (handsOn) this.animateHands(stroke, intensity, C);
     else if (this.handsActive) this.restPose();
-    this.handsActive = act.w > 0.001;
+    this.handsActive = handsOn;
+
+    // Animation .vmd par-dessus la posture calculée.
+    motion.w = damp(motion.w, motion.on && motion.player ? 1 : 0, 3);
+    if (motion.player && motion.w > 0.001) {
+      motion.t += dt * motion.rate * (1 + C);
+      const morphs = motion.player.apply(motion.t, motion.w);
+      for (const [name, v] of Object.entries(morphs)) set(name, Math.max(em?.getValue(name) ?? 0, v * motion.w));
+    } else if (motion.player && !motion.on && motion.w <= 0.001 && motion.wasOn) {
+      motion.player.reset();
+      this.restPose();
+    }
+    motion.wasOn = motion.w > 0.001;
 
     vrm.update(dt);
   }
@@ -492,6 +536,22 @@ export class Avatar {
     // Fondu avec la pose de repos.
     up.quaternion.copy(restUp.clone().slerp(up.quaternion, w));
     lo.quaternion.copy(restLo.clone().slerp(lo.quaternion, w));
+  }
+
+  /**
+   * Pendant une animation .vmd (accroupie, allongée...), la caméra suit le bassin pour garder le corps
+   * dans le cadre ; elle revient au cadrage normal ensuite. L'orbite choisie à la souris est conservée.
+   */
+  followBody(dt) {
+    if (!this.baseTarget) return;
+    const w = this.motion.w;
+    const hips = this.vrm.humanoid.getNormalizedBoneNode('hips').getWorldPosition(new THREE.Vector3());
+    const goal = this.baseTarget.clone();
+    goal.y += (hips.y - this.hipsRest.y) * w;
+    goal.z += hips.z * w;
+    const delta = goal.sub(this.controls.target).multiplyScalar(1 - Math.exp(-4 * dt));
+    this.controls.target.add(delta);
+    this.camera.position.add(delta);
   }
 
   animateAmbiance(t, dt) {

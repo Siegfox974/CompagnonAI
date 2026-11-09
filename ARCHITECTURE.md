@@ -50,6 +50,11 @@
 - L'excitation est calculée côté interface (lecture vidéo détectée dans le `<webview>` toutes les 2 s) et envoyée au serveur (`state`), qui l'injecte dans le prompt.
 - Balises d'action `[touch] [stop] [climax]`, événements spontanés `start_touch`, `pleasure` et `climax`.
 
+### Fait : animations MMD
+- `web/vmd.js` lit le format binaire (Shift-JIS, courbes de Bézier) ; `web/retarget.js` convertit vers le squelette normalisé VRM
+  (repère, pose A → T par conjugaison, IK des jambes, morphs) ; fondu avec la posture calculée et caméra qui suit le bassin.
+- `GET/POST /api/motions` ; fichiers servis depuis `motions/`.
+
 ### Pistes suivantes
 - Le personnage pilote sa tenue (balise `[outfit:…]`), avec des tenues préparées par modèle.
 - Animations `.vrma` (danse, poses, gestes des mains).

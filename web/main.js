@@ -1,5 +1,6 @@
 import { Avatar, AMBIANCES } from './avatar.js';
 import { TagParser, stripTags } from './tags.js';
+import { parseVMD } from './vmd.js';
 
 const $ = (s) => document.querySelector(s);
 const log = $('#log');
@@ -12,6 +13,8 @@ const watchingEl = $('#watching');
 
 const isApp = navigator.userAgent.includes('Electron');
 const avatar = createAvatar();
+// Accès de débogage en développement uniquement (npm run dev / npm run app).
+if (import.meta.env?.DEV) window.__avatar = avatar;
 let character = { name: '…', emotions: ['neutral'], actions: [] };
 let busy = false;
 
@@ -35,6 +38,8 @@ function createAvatar() {
       setArousal: noop,
       setVideoPlaying: noop,
       climax: noop,
+      setMotion: noop,
+      setMotionRate: noop,
       getParts: () => [],
       setPartVisible: noop,
       load: async () => {
@@ -104,6 +109,80 @@ async function loadVrm(url) {
   }
 }
 
+// ---------- Animations .vmd ----------
+/**
+ * Fichiers du dossier motions/. L'animation choisie remplace l'animation calculée pendant le moment 🔥
+ * (vitesse liée à l'excitation) ; « Jouer en boucle » la lance à tout moment.
+ */
+const motions = {
+  cache: new Map(),
+  selected: load('actMotion', ''),
+  preview: false,
+  async list() {
+    const names = await (await fetch('/api/motions')).json();
+    const box = $('#motions-list');
+    box.innerHTML = '';
+    for (const name of ['', ...names]) {
+      const label = document.createElement('label');
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'motion';
+      radio.checked = name === this.selected;
+      radio.addEventListener('change', () => this.select(name));
+      label.append(radio, name || 'Calculée (sans fichier)');
+      box.append(label);
+    }
+  },
+  async clip(name) {
+    if (!name) return null;
+    if (!this.cache.has(name)) {
+      const res = await fetch(`/motions/${encodeURIComponent(name)}`);
+      if (!res.ok) throw new Error(`Animation introuvable : ${name}`);
+      this.cache.set(name, parseVMD(await res.arrayBuffer()));
+    }
+    return this.cache.get(name);
+  },
+  select(name) {
+    this.selected = name;
+    save('actMotion', name);
+    if (this.preview || intimacy.on) this.play(this.preview);
+  },
+  /** Lance l'animation choisie (aperçu en boucle, ou pour le moment intime). */
+  async play(preview = false) {
+    this.preview = preview;
+    try {
+      const clip = await this.clip(this.selected);
+      avatar.setMotion(clip);
+      if (preview) avatar.setMotionRate(1);
+      if (!clip && preview) addMessage('error', 'Choisis d’abord un fichier .vmd dans la liste.');
+    } catch (err) {
+      addMessage('error', `Animation illisible : ${err.message}`);
+    }
+  },
+  stop() {
+    this.preview = false;
+    avatar.setMotion(null);
+  },
+  async upload(file) {
+    const res = await fetch('/api/motions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream', 'X-Filename': encodeURIComponent(file.name) },
+      body: await file.arrayBuffer(),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return addMessage('error', data.error || 'Envoi impossible');
+    this.cache.delete(data.name);
+    this.selected = data.name;
+    save('actMotion', data.name);
+    await this.list();
+    $('#motions').hidden = false;
+  },
+};
+$('#motions-toggle').addEventListener('click', () => ($('#motions').hidden = !$('#motions').hidden));
+$('#motion-play').addEventListener('click', () => motions.play(true));
+$('#motion-stop').addEventListener('click', () => motions.stop());
+motions.list();
+
 // ---------- Garde-robe ----------
 let modelKey = 'wardrobe:modele';
 function renderWardrobe() {
@@ -157,8 +236,10 @@ addEventListener('dragleave', () => hint.classList.remove('dragging'));
 addEventListener('drop', (e) => {
   e.preventDefault();
   hint.classList.remove('dragging');
-  const f = [...e.dataTransfer.files].find((f) => f.name.toLowerCase().endsWith('.vrm'));
+  const files = [...e.dataTransfer.files];
+  const f = files.find((f) => f.name.toLowerCase().endsWith('.vrm'));
   if (f) loadVrm(URL.createObjectURL(f));
+  for (const m of files.filter((f) => f.name.toLowerCase().endsWith('.vmd'))) motions.upload(m);
 });
 
 // ---------- Site en fond (app desktop) ----------
@@ -464,16 +545,20 @@ const intimacy = {
     this.el.classList.toggle('climax', Date.now() < this.climaxUntil);
     $('#arousal-fill').style.width = `${Math.round(this.arousal * 100)}%`;
     avatar.setArousal(this.arousal);
+    // L'animation .vmd accélère avec l'excitation (et ralentit si la vidéo est en pause).
+    if (this.on && !motions.preview) avatar.setMotionRate((0.75 + 0.6 * this.arousal) * (this.videoPlaying ? 1 : 0.6));
   },
   start() {
     if (this.on) return;
     this.on = true;
     avatar.setAct(true);
+    if (motions.selected) motions.play();
     this.render();
   },
   stop(reset = false) {
     this.on = false;
     avatar.setAct(false);
+    if (!motions.preview) avatar.setMotion(null);
     if (reset) this.arousal = 0;
     this.render();
   },

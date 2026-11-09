@@ -20,6 +20,7 @@ export const config = {
   dirs: {
     characters: path.join(ROOT, 'characters'),
     models: path.join(ROOT, 'models'),
+    motions: path.join(ROOT, 'motions'),
     data: path.join(ROOT, 'data'),
     dist: path.join(ROOT, 'dist'),
   },
