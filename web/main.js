@@ -651,7 +651,7 @@ $('#info-toggle').addEventListener('click', () => (vrmInfo.hidden = !vrmInfo.hid
 
 function greet() {
   if (!character.greeting) return;
-  const emo = character.greeting.match(/\[(\w+)\]/)?.[1];
+  const emo = [...character.greeting.matchAll(/\[(\w+)\]/g)].map((m) => m[1]).find((e) => character.emotions.includes(e));
   if (emo) setEmotion(emo);
   addMessage('assistant', stripTags(character.greeting, [...character.emotions, ...character.actions]));
 }
@@ -669,7 +669,9 @@ async function showCharacter(c) {
   for (const m of history) addMessage(m.role, stripTags(m.content, [...c.emotions, ...c.actions]));
   intimacy.stop(true);
   $('#act-toggle').hidden = c.actions.length === 0;
-  const lastEmo = [...history].reverse().find((m) => m.role === 'assistant')?.content.match(/\[(\w+)\][^[]*$/)?.[1];
+  // Dernière émotion de son dernier message (en ignorant les balises d'action comme [touch]).
+  const lastMsg = [...history].reverse().find((m) => m.role === 'assistant')?.content ?? '';
+  const lastEmo = [...lastMsg.matchAll(/\[(\w+)\]/g)].map((m) => m[1]).filter((e) => c.emotions.includes(e)).at(-1);
   if (lastEmo) setEmotion(lastEmo);
 }
 

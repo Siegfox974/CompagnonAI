@@ -79,7 +79,7 @@ export function buildSystemPrompt(c, userName = "l'utilisateur") {
       `Ton corps peut agir à l'écran grâce à des balises d'action : ${ACTIONS.map((a) => `[${a}] ${ACTION_HINTS[a]}`).join(' ; ')}. ` +
         `Tu peux décider toi-même de te caresser quand ce que vous regardez ou ce qu'il te dit t'excite, ou quand il te le demande. ` +
         `N'utilise [climax] que lorsque ton excitation est très élevée.`,
-    `Ne répète jamais mot pour mot un de tes messages précédents.`,
+    `Ne répète jamais mot pour mot un de tes messages précédents et varie tes débuts de phrase (pas toujours le même surnom ni la même interjection).`,
   ]
     .filter(Boolean)
     .join('\n\n');

@@ -47,10 +47,12 @@ body.site-mode.avatar-hidden #scene { visibility: hidden; }
 .hint[hidden] { display: none; }
 
 #panel { position: fixed; right: 0; top: 0; bottom: 0; width: var(--panel-w); max-width: 100%; display: flex; flex-direction: column; background: var(--panel); backdrop-filter: blur(10px); border-left: 1px solid var(--line); }
-#panel header { display: flex; align-items: center; gap: 6px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+#panel header { display: flex; align-items: center; gap: 8px; padding: 12px 14px 6px; }
+#panel .toolbar { display: flex; align-items: center; gap: 2px; padding: 0 10px 8px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+#panel .toolbar .icon { font-size: 18px; padding: 4px 7px; }
 .spacer { flex: 1; }
 .pill { font-size: 12px; padding: 2px 8px; border-radius: 99px; background: #ffffff14; color: var(--muted); }
-#char-select { background: transparent; color: var(--text); border: 0; font: inherit; font-weight: 600; cursor: pointer; max-width: 150px; }
+#char-select { background: transparent; color: var(--text); border: 0; font: inherit; font-weight: 600; cursor: pointer; max-width: 220px; }
 #char-select option { background: #1b1020; color: var(--text); }
 #motions { padding: 8px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
 #motions[hidden] { display: none; }

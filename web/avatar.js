@@ -492,9 +492,16 @@ export class Avatar {
     const scale = crotch.y / 0.85; // proportions du modèle
     const speed = 1 + C;
     crotch.add(new THREE.Vector3(0, (-0.06 + stroke * 0.035 * speed) * scale, (0.09 + Math.cos(this.act.phase) * 0.015) * scale));
-    const breast = chest
-      .getWorldPosition(new THREE.Vector3())
-      .add(new THREE.Vector3(0.08 * scale, (-0.03 + Math.sin(this.act.phase * 0.5) * 0.015) * scale, (0.14 + Math.cos(this.act.phase * 0.5) * 0.01) * scale));
+    // Poitrine : un peu au-dessus de l'os du buste (entre lui et le cou), côté gauche, en avant.
+    const chestPos = chest.getWorldPosition(new THREE.Vector3());
+    const neckY = bone('neck')?.getWorldPosition(new THREE.Vector3()).y ?? chestPos.y + 0.2;
+    const breast = chestPos.add(
+      new THREE.Vector3(
+        0.08 * scale,
+        (neckY - chestPos.y) * 0.25 + Math.sin(this.act.phase * 0.5) * 0.015 * scale,
+        (0.15 + Math.cos(this.act.phase * 0.5) * 0.01) * scale,
+      ),
+    );
 
     this.solveArm('right', crotch, new THREE.Vector3(-0.5, -0.2, -0.3));
     this.solveArm('left', breast, new THREE.Vector3(0.5, -0.4, -0.2));
